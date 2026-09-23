@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
-import { closeRoom, publishRoom, roomToken, type RoomGame } from '@/lib/rooms';
+import { closeRoom, publishRoom, roomToken, type RoomGame, seatId } from '@/lib/rooms';
 import { clampGarbage, decideEnd, pickEliminated, resolveColor, standings as rankStandings } from '@/lib/roomLogic';
 
 type GameKey = 'bombas' | 'runner' | 'caen' | 'torre' | 'royale';
@@ -51,6 +51,11 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const lastTrack = useRef(0);
   const trailing = useRef<number | null>(null);
   const inheritedTok = useRef<string | null>(null);
+  // el anfitrión de la ronda es quien la arrancó; no depende de la lista de presencia
+  // (si un jugador deja de ver al anfitrión un instante, no se autoproclama anfitrión)
+  const roundHostRef = useRef<string | null>(null);
+  const hostGoneSince = useRef<number | null>(null);
+  const [, forceRender] = useState(0);
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [phase, setPhase] = useState<Phase>('lobby');
@@ -71,15 +76,18 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const send = useCallback((event: string, payload: Record<string, unknown>) => {
     chRef.current?.send({ type: 'broadcast', event, payload: { ...payload, from: meRef.current?.id } });
   }, []);
-  const fromHost = (p: { from?: string } | null | undefined) => !!p?.from && p.from === playersRef.current[0]?.id;
-  const fromPlayer = (p: { from?: string } | null | undefined) => !!p?.from && playersRef.current.some(o => o.id === p.from);
+  // la lista de jugadores con mi estado local (la presencia puede llegar tarde o no incluirme por un instante)
+  const withMe = (list: Player[]) => { const m = meRef.current; return m ? [...list.filter(p => p.id !== m.id), m].sort((a, b) => a.joinedAt - b.joinedAt) : list; };
+  const hostNowId = () => roundHostRef.current || playersRef.current[0]?.id;
+  const fromHost = (p: { from?: string } | null | undefined) => !!p?.from && p.from === hostNowId();
+  const fromRoster = (p: { from?: string } | null | undefined) => !!p?.from && !!activeRef.current?.roster.some(r => r.id === p.from);
 
   /* ---------- presencia ---------- */
   const track = useCallback((patch: Partial<Player>, force = false) => {
     if (!meRef.current || !chRef.current) return;
     meRef.current = { ...meRef.current, ...patch };
     const send = () => { trailing.current = null; lastTrack.current = Date.now(); chRef.current?.track(meRef.current!); };
-    const wait = 250 - (Date.now() - lastTrack.current);
+    const wait = 500 - (Date.now() - lastTrack.current); // máximo ~2 por segundo (Supabase limita a 10 mensajes/s por jugador)
     if (force || wait <= 0) { if (trailing.current) clearTimeout(trailing.current); send(); return; }
     if (!trailing.current) trailing.current = window.setTimeout(send, wait);
   }, []);
@@ -113,7 +121,8 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   }, [code, track]);
 
   /* ---------- arranque de una ronda ---------- */
-  const begin = useCallback(async (p: StartPayload) => {
+  const begin = useCallback(async (p: StartPayload & { from?: string }) => {
+    roundHostRef.current = p.from || playersRef.current[0]?.id || null; hostGoneSince.current = null;
     activeRef.current = p; setActive(p); setWinner(null); setCoopSum(null);
     const inRoster = p.roster.some(r => r.id === meRef.current?.id);
     setSpectating(!inRoster);
@@ -154,7 +163,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     const g = new Arcade(stageRef.current!);
     gameRef.current = g;
     g.kind = p.game; g.colors(); g.resize();
-    const hostNow = playersRef.current[0]?.id === meRef.current?.id;
+    const hostNow = roundHostRef.current === meRef.current?.id;
     g.startMp({
       seed: p.seed, diff: p.diff, me: meRef.current!.id, roster: p.roster,
       role: p.game === 'torre' ? (hostNow ? 'host' : 'guest') : 'battle', coop: p.game === 'torre',
@@ -173,31 +182,35 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     track({ lives: g.lives, score: 0, level: 1 }, true);
   }, [track]);
 
-  /* ---------- conexión a la sala ---------- */
+  /* ---------- conexión a la sala (con reconexión automática) ---------- */
   useEffect(() => {
     const sb = getSupabase();
     if (!sb) { setError('Las salas online necesitan Supabase conectado.'); return; }
     let cancelled = false;
-    import('@/lib/tecla/history').then(({ History }) => {
-      if (cancelled) return;
-      const id = History.user?.id || guestId();
-      const nick = History.user?.name || guestNick();
-      setName(nick);
-      meRef.current = { id, name: nick, color: '', joinedAt: Date.now(), round: 0, alive: false, lives: 0, score: 0, level: 0, deadAt: null, cfg: { game: initialGame, diff: 'medio', pub: initialPublic, phase: 'lobby', round: 0 } };
-      const ch = sb.channel(`room-${code}`, { config: { presence: { key: id }, broadcast: { self: true } } });
+    let retry: number | null = null;
+
+    const connect = () => {
+      if (cancelled || !meRef.current) return;
+      const ch = sb.channel(`room-${code}`, { config: { presence: { key: meRef.current.id }, broadcast: { self: true } } });
       chRef.current = ch;
       ch.on('presence', { event: 'sync' }, () => {
         const st = ch.presenceState() as Record<string, Player[]>;
         const list = Object.values(st).map(a => a[0]).filter(Boolean).sort((a, b) => a.joinedAt - b.joinedAt);
         playersRef.current = list; setPlayers(list);
         const h = list[0]; if (h?.cfg?.tok) inheritedTok.current = h.cfg.tok;
+        // si el anfitrión de la ronda se fue de verdad (más de 6 s), lo hereda el siguiente de la lista
+        const rh = roundHostRef.current;
+        if (rh && !list.some(p => p.id === rh)) {
+          hostGoneSince.current = hostGoneSince.current || Date.now();
+          if (Date.now() - hostGoneSince.current > 6000 && list[0]?.id === meRef.current?.id) { roundHostRef.current = meRef.current!.id; forceRender(x => x + 1); }
+        } else hostGoneSince.current = null;
         // colores únicos: si alguien que llegó antes tiene el mío (o no tengo), tomo el primero libre
         const next = resolveColor(meRef.current!, list, PLAYER_COLORS);
         if (next) track({ color: next }, true);
       });
       ch.on('broadcast', { event: 'start' }, ({ payload }) => { if (fromHost(payload)) begin(payload as StartPayload); });
-      ch.on('broadcast', { event: 'garbage' }, ({ payload }) => { if (payload.to === meRef.current?.id && fromPlayer(payload)) gameRef.current?.receiveGarbage?.(clampGarbage(payload.n)); });
-      ch.on('broadcast', { event: 'hit' }, ({ payload }) => { if (playersRef.current[0]?.id === meRef.current?.id && fromPlayer(payload)) gameRef.current?.remoteHit?.(payload.id); });
+      ch.on('broadcast', { event: 'garbage' }, ({ payload }) => { if (payload.to === meRef.current?.id && fromRoster(payload)) gameRef.current?.receiveGarbage?.(clampGarbage(payload.n)); });
+      ch.on('broadcast', { event: 'hit' }, ({ payload }) => { if (roundHostRef.current === meRef.current?.id && fromRoster(payload)) gameRef.current?.remoteHit?.(payload.id); });
       ch.on('broadcast', { event: 'snap' }, ({ payload }) => { const g = gameRef.current; if (g?.mirror && fromHost(payload)) g.applySnapshot(payload); });
       ch.on('broadcast', { event: 'elim' }, ({ payload }) => {
         if (!fromHost(payload)) return;
@@ -208,18 +221,44 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       });
       ch.on('broadcast', { event: 'end' }, ({ payload }) => { if (fromHost(payload)) finish(payload); });
       ch.subscribe(status => {
-        if (status === 'SUBSCRIBED') ch.track(meRef.current!);
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setError('Se cortó la conexión con la sala. Si no vuelve sola en unos segundos, recargá la página.');
-        if (status === 'SUBSCRIBED') setError('');
+        if (status === 'SUBSCRIBED') { setError(''); ch.track(meRef.current!); return; }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (cancelled || chRef.current !== ch) return; // cierre nuestro (al salir o al reconectar)
+          setError('Se cortó la conexión con la sala. Reconectando…');
+          chRef.current = null;
+          sb.removeChannel(ch);
+          if (retry) clearTimeout(retry);
+          retry = window.setTimeout(connect, 1500);
+        }
       });
+    };
+
+    // al volver a la pestaña, si el canal se cayó mientras estaba en segundo plano, reconectar ya
+    const onVisible = () => {
+      if (document.hidden || cancelled) return;
+      const ch = chRef.current;
+      if (!ch || ch.state !== 'joined') { if (ch) { chRef.current = null; sb.removeChannel(ch); } if (retry) clearTimeout(retry); connect(); }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    import('@/lib/tecla/history').then(({ History }) => {
+      if (cancelled) return;
+      const id = seatId(History.user?.id || guestId());
+      const nick = History.user?.name || guestNick();
+      setName(nick);
+      meRef.current = { id, name: nick, color: '', joinedAt: Date.now(), round: 0, alive: false, lives: 0, score: 0, level: 0, deadAt: null, cfg: { game: initialGame, diff: 'medio', pub: initialPublic, phase: 'lobby', round: 0 } };
+      connect();
     });
     return () => {
       cancelled = true;
+      if (retry) clearTimeout(retry);
+      document.removeEventListener('visibilitychange', onVisible);
       gameRef.current?.destroy?.(); stopRoyale();
       if (trailing.current) clearTimeout(trailing.current);
       const wasHost = playersRef.current[0]?.id === meRef.current?.id;
       if (wasHost && playersRef.current.length <= 1) closeRoom(code, roomToken(code, inheritedTok.current));
-      if (chRef.current) sb.removeChannel(chRef.current);
+      const ch = chRef.current; chRef.current = null;
+      if (ch) sb.removeChannel(ch);
       import('@/lib/tecla/input').then(m => m.setConsumer(null));
     };
   }, [code, begin, finish, initialGame, initialPublic, track]);
@@ -236,15 +275,23 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   }, [isHost, code, cfg.game, cfg.diff, cfg.pub, phase, players.length, track]);
 
   /* ---------- el anfitrión decide eliminaciones y quién ganó ---------- */
+  const amRoundHost = !!active && roundHostRef.current === meRef.current?.id;
   useEffect(() => {
-    if (!isHost || phase !== 'playing' || !active || GAMES[active.game].mode === 'coop') return;
+    if (!amRoundHost || phase !== 'playing' || !active || GAMES[active.game].mode === 'coop') return;
     if (endSent.current === active.round) return;
-    const verdict = decideEnd(players, active.roster, active.round);
-    if (verdict.end) { endSent.current = active.round; send('end', { winner: verdict.winner }); }
-  }, [isHost, phase, active, players]);
+    // mi propio estado sale de mi memoria, no de la presencia (que puede no incluirme por un instante)
+    const check = () => decideEnd(withMe(playersRef.current), active.roster, active.round);
+    if (!check().end) return;
+    // y el final tiene que sostenerse 1,2 s: evita declarar ganador por un parpadeo de la presencia
+    const t = window.setTimeout(() => {
+      const v = check();
+      if (v.end && endSent.current !== active.round) { endSent.current = active.round; send('end', { winner: v.winner }); }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [amRoundHost, phase, active, players]);
 
   useEffect(() => {
-    if (!isHost || phase !== 'playing' || active?.game !== 'royale') return;
+    if (!amRoundHost || phase !== 'playing' || active?.game !== 'royale') return;
     const t0 = Date.now(); let done = 0;
     const iv = setInterval(() => {
       const round = Math.floor((Date.now() - t0) / ROUND_MS);
@@ -252,12 +299,12 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       done = round;
       // un segundo de margen para que lleguen las letras finales de todos
       setTimeout(() => {
-        const loser = pickEliminated(playersRef.current, active.roster, active.round, done);
+        const loser = pickEliminated(withMe(playersRef.current), active.roster, active.round, done);
         if (loser) send('elim', { id: loser, round: done });
       }, 1000);
     }, 200);
     return () => clearInterval(iv);
-  }, [isHost, phase, active]);
+  }, [amRoundHost, phase, active]);
 
   /* ---------- acciones ---------- */
   const setCfg = (patch: Partial<Cfg>) => {
@@ -271,7 +318,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     endSent.current = 0;
     send('start', { game: cfg.game, diff: cfg.diff, seed: Math.floor(Math.random() * 2 ** 31), round, roster });
   };
-  const backToLobby = () => { setCfg({ phase: 'lobby' }); gameRef.current?.destroy?.(); gameRef.current = null; stopRoyale(); setPhase('lobby'); };
+  const backToLobby = () => { roundHostRef.current = null; setCfg({ phase: 'lobby' }); gameRef.current?.destroy?.(); gameRef.current = null; stopRoyale(); setPhase('lobby'); };
   const rename = (v: string) => { const nick = v.slice(0, 24) || 'invitado'; setName(nick); try { localStorage.setItem('tecla:nick', nick); } catch {} track({ name: nick }, true); };
   const pickColor = (c: string) => { if (players.some(p => p.id !== meRef.current?.id && p.color === c)) return; track({ color: c }, true); };
   const copy = async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/sala/${code}`); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { window.prompt('Copiá el link de la sala:', `${window.location.origin}/sala/${code}`); } };

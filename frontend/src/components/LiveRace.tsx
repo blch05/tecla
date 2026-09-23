@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
-import { closeRoom, publishRoom, roomToken } from '@/lib/rooms';
+import { closeRoom, publishRoom, roomToken, seatId } from '@/lib/rooms';
 
 interface Racer { id: string; name: string; joinedAt: number; round: number; progress: number; wpm: number; done: boolean; finishMs: number | null; pub?: boolean; tok?: string }
 type Phase = 'lobby' | 'countdown' | 'racing' | 'done';
@@ -44,7 +44,7 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
     if (!meRef.current || !chRef.current) return;
     meRef.current = { ...meRef.current, ...patch };
     const send = () => { trailing.current = null; lastTrack.current = Date.now(); chRef.current?.track(meRef.current!); };
-    const wait = 200 - (Date.now() - lastTrack.current);
+    const wait = 400 - (Date.now() - lastTrack.current); // Supabase limita a 10 mensajes/s por jugador
     if (force || wait <= 0) { if (trailing.current) clearTimeout(trailing.current); send(); return; }
     // no saturar el canal, pero siempre mandar el último estado (antes se perdía y la barra quedaba trabada)
     if (!trailing.current) trailing.current = window.setTimeout(send, wait);
@@ -90,13 +90,12 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
     const sb = getSupabase();
     if (!sb) { setError('Las carreras en vivo necesitan Supabase conectado.'); return; }
     let cancelled = false;
-    import('@/lib/tecla/history').then(({ History }) => {
-      if (cancelled) return;
-      const id = History.user?.id || guestId();
-      const nick = History.user?.name || guestNick();
-      setName(nick);
-      meRef.current = { id, name: nick, joinedAt: Date.now(), round: 0, progress: 0, wpm: 0, done: false, finishMs: null, pub: initialPublic };
-      const ch = sb.channel(`race-${code}`, { config: { presence: { key: id }, broadcast: { self: true } } });
+    let retry: number | null = null;
+
+    // conexión con reconexión automática (si el canal se corta, por ejemplo con la pestaña en segundo plano)
+    const connect = () => {
+      if (cancelled || !meRef.current) return;
+      const ch = sb.channel(`race-${code}`, { config: { presence: { key: meRef.current.id }, broadcast: { self: true } } });
       chRef.current = ch;
       ch.on('presence', { event: 'sync' }, () => {
         const st = ch.presenceState() as Record<string, Racer[]>;
@@ -106,16 +105,41 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
       // solo el anfitrión (el primero que entró) puede arrancar la carrera
       ch.on('broadcast', { event: 'start' }, ({ payload }) => { if (payload?.from && payload.from === racersRef.current[0]?.id) begin(payload.seed, payload.round); });
       ch.subscribe(status => {
-        if (status === 'SUBSCRIBED') ch.track(meRef.current!);
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setError('No se pudo conectar a la sala. Probá recargar la página.');
+        if (status === 'SUBSCRIBED') { setError(''); ch.track(meRef.current!); return; }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (cancelled || chRef.current !== ch) return;
+          setError('Se cortó la conexión con la sala. Reconectando…');
+          chRef.current = null;
+          sb.removeChannel(ch);
+          if (retry) clearTimeout(retry);
+          retry = window.setTimeout(connect, 1500);
+        }
       });
+    };
+    const onVisible = () => {
+      if (document.hidden || cancelled) return;
+      const ch = chRef.current;
+      if (!ch || ch.state !== 'joined') { if (ch) { chRef.current = null; sb.removeChannel(ch); } if (retry) clearTimeout(retry); connect(); }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    import('@/lib/tecla/history').then(({ History }) => {
+      if (cancelled) return;
+      const id = seatId(History.user?.id || guestId());
+      const nick = History.user?.name || guestNick();
+      setName(nick);
+      meRef.current = { id, name: nick, joinedAt: Date.now(), round: 0, progress: 0, wpm: 0, done: false, finishMs: null, pub: initialPublic };
+      connect();
     });
     return () => {
       cancelled = true;
+      if (retry) clearTimeout(retry);
+      document.removeEventListener('visibilitychange', onVisible);
       tbRef.current?.stop();
       if (trailing.current) clearTimeout(trailing.current);
       if (racersRef.current[0]?.id === meRef.current?.id && racersRef.current.length <= 1) closeRoom(code, roomToken(code, racersRef.current[0]?.tok));
-      if (chRef.current) sb.removeChannel(chRef.current);
+      const ch = chRef.current; chRef.current = null;
+      if (ch) sb.removeChannel(ch);
       import('@/lib/tecla/input').then(m => m.setConsumer(null));
     };
   }, [code, begin, initialPublic]);

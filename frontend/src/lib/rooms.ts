@@ -66,3 +66,9 @@ export async function findRoom(code: string): Promise<RoomGame | null> {
   const { data, error } = await sb.rpc('find_room', { p_code: code });
   return error ? null : ((data as RoomGame | null) ?? null);
 }
+
+/* Identidad dentro de una sala: una por pestaña (y por carga de página).
+   Antes se usaba el id de la cuenta o del navegador, y dos pestañas o dos
+   dispositivos con la misma cuenta se pisaban como si fueran un solo jugador. */
+const TAB = Math.random().toString(36).slice(2, 8);
+export const seatId = (base: string) => `${base}-${TAB}`;

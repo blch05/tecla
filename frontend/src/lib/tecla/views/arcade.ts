@@ -202,8 +202,8 @@ export class Arcade {
     if (!this.paused) { this.t += dt; this.update(dt); }
     this.draw(); this.hud();
     if (this.mp) {
-      if (this.mp.role === 'host' && this.kind === 'torre' && t - this.lastSnap > 90) { this.lastSnap = t; this.mp.onSnapshot?.(this.snapshot()); }
-      if (t - this.lastStatus > 300) { this.lastStatus = t; this.mp.onStatus?.({ lives: this.lives, score: this.score, level: this.kind === 'torre' ? this.wave : this.kind === 'runner' ? Math.round(this.dist) : this.level, alive: this.running }); }
+      if (this.mp.role === 'host' && this.kind === 'torre' && t - this.lastSnap > 250) { this.lastSnap = t; this.mp.onSnapshot?.(this.snapshot()); }
+      if (t - this.lastStatus > 1000) { this.lastStatus = t; this.mp.onStatus?.({ lives: this.lives, score: this.score, level: this.kind === 'torre' ? this.wave : this.kind === 'runner' ? Math.round(this.dist) : this.level, alive: this.running }); }
     }
     if (this.running) this.raf = requestAnimationFrame(x => this.frame(x));
   }
