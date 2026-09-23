@@ -5,6 +5,7 @@ import { TypeBox } from '@/lib/tecla/typebox';
 import { Bot, botBase, countdown, diffMul, diffSelector, endPanel, makeLanes, ord, preStart } from '@/lib/tecla/views/shared';
 import { setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
+import { roomBrowser } from '@/lib/tecla/bits';
 
 /* =========================================================
    vista: COMPETIR
@@ -247,12 +248,11 @@ export const Daily: any = {
 
 export const Live: any = {
   id: 'live', name: 'en vivo', bots: false,
-  desc: 'Carrera contra personas reales. Se crea una sala con un link: pasáselo a tus amigos y, cuando estén todos, arrancás vos.',
+  desc: 'Jugá contra personas reales: carreras, battle royale y el arcade multijugador. Unite a una sala pública o creá la tuya, pública o privada. Con «empezar» abrís una carrera rápida.',
   extra() {
-    const inp = h('input', { class: 'live-nick', id: 'join-code', placeholder: 'código de sala', maxlength: '8', style: 'max-width:160px' });
-    const go = () => { const c = inp.value.trim().toLowerCase().replace(/[^a-z0-9]/g, ''); if (c) nav.go('/carrera/' + c); };
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); go(); } });
-    return h('div', { class: 'row' }, h('span', { class: 'lbl', text: 'o unite a una sala' }), inp, h('button', { class: 'btn', type: 'button', text: 'unirme', onclick: go }));
+    const el = h('div', { class: 'rooms-host' });
+    roomBrowser(el, p => nav.go(p));
+    return el;
   },
   start(area) {
     const code = Math.random().toString(36).slice(2, 7);

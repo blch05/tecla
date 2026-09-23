@@ -468,3 +468,41 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 @media (max-width:760px){
   .rk-body{grid-template-columns:1fr}
 }
+
+/* ---------- salas online ---------- */
+.room-badge{display:inline-block;padding:1px 8px;border-radius:99px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line)}
+.room-badge.pub{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,var(--line));background:color-mix(in srgb,var(--ok) 8%,var(--surface))}
+.room-badge.pub::before{content:"○ "}
+.room-badge.priv{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--line));background:color-mix(in srgb,var(--warn) 9%,var(--surface))}
+.room-badge.priv::before{content:"● "}
+.rooms{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;width:100%;margin-top:4px}
+.rooms-host{width:100%}
+.prestart:has(.rooms-host){max-width:none}
+.rooms-list,.rooms-create{display:flex;flex-direction:column;gap:8px;min-width:0}
+.rooms-list{max-height:40vh;overflow:auto;padding-right:4px}
+.room-row{display:grid;grid-template-columns:auto 1fr auto auto auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.room-row:hover{border-color:var(--accent-2)}
+.room-meta{display:flex;flex-direction:column;min-width:0}
+.room-meta b{font-family:var(--display);font-size:.9rem;font-weight:600}
+.room-count{font-family:var(--display);font-variant-numeric:tabular-nums;color:var(--sub);font-size:13px}
+.room-grid{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px;min-height:0}
+.room-main{display:flex;flex-direction:column;gap:12px;min-height:0}
+.room-lobby{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.room-play{position:relative;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
+.room-play .stage-wrap{min-height:300px}
+.room-royale{padding-top:6px}
+.room-side{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto}
+.room-players{display:flex;flex-direction:column;gap:4px}
+.rp{display:grid;grid-template-columns:12px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;font-size:13.5px}
+.rp.me{background:var(--soft)}
+.rp.out{opacity:.45}
+.rp.out .rp-name{text-decoration:line-through}
+.rp-dot{width:12px;height:12px;border-radius:50%}
+.rp-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-info{color:var(--sub);font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.swatch-btn[disabled]{cursor:not-allowed}
+@media (max-width:900px){
+  .rooms,.room-grid{grid-template-columns:1fr}
+  .room-row{grid-template-columns:auto 1fr auto;}
+  .room-row .chip,.room-row .room-count{display:none}
+}

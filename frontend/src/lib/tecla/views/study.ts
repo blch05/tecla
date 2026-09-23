@@ -28,7 +28,7 @@ export function processDoc(raw, title) {
   const kws = Object.keys(score).sort((a, b) => score[b] - score[a]);
   const sentences = paras.flatMap(p => p.split(/(?<=[.!?])\s+/)).map(s => s.trim()).filter(s => s.length > 20);
   const cards = [];
-  paras.forEach(p => { const m = p.match(/^([^:]{2,40}):\s+(.+)$/); if (m) { const term = m[1].trim(); cards.push({ a: term, q: m[2].replace(new RegExp(term, 'gi'), '____') }); } });
+  paras.forEach(p => { const m = p.match(/^([^:]{2,40}):\s+(.+)$/); if (m) { const term = m[1].trim(); cards.push({ a: term, q: m[2].replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '____') }); } });
   sentences.forEach(s => {
     if (cards.length >= 20) return;
     const m = s.match(/^(?:(?:el|la|los|las|un|una)\s+)?([\p{L} ]{3,28}?)\s+(es|son|se define como|consiste en)\s+(.{20,})$/iu);

@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import CountUp from '@/components/bits/CountUp';
 import ShinyText from '@/components/bits/ShinyText';
+import RoomBrowser from '@/components/RoomBrowser';
 
 const roots = new WeakMap<Element, Root>();
 
@@ -31,4 +32,9 @@ export function shiny(el: Element | null | undefined, text: string) {
   if (!el) return;
   if (reduced()) { el.textContent = text; return; }
   render(el, <ShinyText text={text} color="var(--accent)" shineColor="#ffffff" speed={2.2} spread={110} />);
+}
+
+/** Lista de salas online (competir → en vivo). */
+export function roomBrowser(el: Element | null | undefined, go: (path: string) => void) {
+  render(el, <RoomBrowser go={go} />);
 }

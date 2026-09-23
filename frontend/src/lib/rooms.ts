@@ -1,0 +1,68 @@
+/* salas online: registro en Supabase para que las públicas aparezcan en la lista */
+import { getSupabase } from '@/lib/supabase/client';
+
+export type RoomGame = 'carrera' | 'bombas' | 'runner' | 'caen' | 'torre' | 'royale';
+
+export interface RoomInfo {
+  code: string;
+  game: RoomGame;
+  difficulty: string | null;
+  host_name: string;
+  players: number;
+  max_players: number;
+  status: 'lobby' | 'playing';
+  updated_at: string;
+}
+
+export const ROOM_GAMES: Record<RoomGame, { name: string; tag: string }> = {
+  carrera: { name: 'carrera', tag: 'tipeo' },
+  royale: { name: 'battle royale', tag: 'tipeo' },
+  bombas: { name: 'bombas', tag: 'arcade · último en pie' },
+  runner: { name: 'runner', tag: 'arcade · último en pie' },
+  caen: { name: 'palabras que caen', tag: 'arcade · ataque' },
+  torre: { name: 'defensa de torre', tag: 'arcade · cooperativo' },
+};
+
+export const newRoomCode = () => Math.random().toString(36).slice(2, 7);
+export const cleanCode = (c: string) => c.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
+export const roomPath = (game: RoomGame, code: string, isPublic = true) =>
+  (game === 'carrera' ? `/carrera/${code}` : `/sala/${code}?juego=${game}`) + (isPublic ? '' : (game === 'carrera' ? '?privada=1' : '&privada=1'));
+
+/** Token del anfitrión para esta sala (se comparte con los demás por presencia, para poder heredar la sala). */
+export function roomToken(code: string, inherited?: string | null): string {
+  const key = 'tecla:roomtok:' + code;
+  try {
+    if (inherited) { localStorage.setItem(key, inherited); return inherited; }
+    let t = localStorage.getItem(key);
+    if (!t) { t = crypto.randomUUID().replace(/-/g, ''); localStorage.setItem(key, t); }
+    return t;
+  } catch { return inherited || crypto.randomUUID().replace(/-/g, ''); }
+}
+
+export async function publishRoom(r: { code: string; token: string; game: RoomGame; difficulty?: string | null; isPublic: boolean; hostName: string; players: number; status: 'lobby' | 'playing' }) {
+  const sb = getSupabase(); if (!sb) return;
+  await sb.rpc('upsert_room', {
+    p_code: r.code, p_token: r.token, p_game: r.game, p_difficulty: r.difficulty ?? null, p_public: r.isPublic,
+    p_host_name: r.hostName, p_players: r.players, p_status: r.status,
+  });
+}
+
+export async function closeRoom(code: string, token: string) {
+  const sb = getSupabase(); if (!sb) return;
+  await sb.rpc('close_room', { p_code: code, p_token: token });
+}
+
+export async function listRooms(): Promise<{ rooms: RoomInfo[]; error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { rooms: [], error: 'Falta conectar Supabase.' };
+  const { data, error } = await sb.rpc('list_rooms');
+  if (error) return { rooms: [], error: /list_rooms/.test(error.message) ? 'La lista de salas todavía no está activada en la base de datos.' : error.message };
+  return { rooms: (data as RoomInfo[]) || [], error: null };
+}
+
+/** Busca a qué juego corresponde un código (sirve también para salas privadas). */
+export async function findRoom(code: string): Promise<RoomGame | null> {
+  const sb = getSupabase(); if (!sb) return null;
+  const { data, error } = await sb.rpc('find_room', { p_code: code });
+  return error ? null : ((data as RoomGame | null) ?? null);
+}

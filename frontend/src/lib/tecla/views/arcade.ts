@@ -3,6 +3,7 @@ import { $, $$, clamp, h, now, rng, shuffle, store, toast } from '@/lib/tecla/ut
 import { SENTENCES, VOCAB } from '@/lib/tecla/data/words';
 import { focusKb, setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
+import { nav } from '@/lib/tecla/utils';
 import { Sfx } from '@/lib/tecla/sfx';
 export { Sfx };
 
@@ -81,7 +82,7 @@ export class Arcade {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0); this.sc = clamp(Math.min(w / 900, hh / 440), .55, 1.2);
     this.buildPath(); this.colors(); if (!this.running) this.drawBg(); else this.draw();
   }
-  diffKey() { return store.get('arcDiff:' + this.kind, 'medio'); }
+  diffKey() { return this.mp ? this.mp.diff : store.get('arcDiff:' + this.kind, 'medio'); }
   get D() { return ADIFF[this.diffKey()] || ADIFF.medio; }
   bestKey(k = this.diffKey()) { return 'arc:' + this.kind + (k === 'medio' ? '' : ':' + k); }
   buildPath() {
@@ -131,7 +132,7 @@ export class Arcade {
       h('div', { class: 'chips', style: 'justify-content:center' }, ...Object.values(POWERS).map(p => h('span', { class: 'chip' }, h('b', { style: 'color:var(--accent)', text: p.g + ' ' }), p.desc))),
       h('div', {}, h('span', { class: 'lbl', style: 'margin-bottom:6px', text: 'misiones' }), this.missionsEl()),
       this.diffLine(),
-      h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'empezar', onclick: () => this.start() }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' }), ' empezar · ', h('kbd', { text: '1' }), ' ', h('kbd', { text: '2' }), ' ', h('kbd', { text: '3' }), ' dificultad · ', h('kbd', { text: 'tab' }), ' reiniciar · ', h('kbd', { text: 'esc' }), ' pausa · ', h('kbd', { text: '⌫' }), ' soltar objetivo'))));
+      h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'empezar', onclick: () => this.start() }), h('button', { class: 'btn', text: this.kind === 'torre' ? 'jugar en equipo online' : 'jugar online con amigos', onclick: () => nav.go(`/sala/${Math.random().toString(36).slice(2, 7)}?juego=${this.kind}`) }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' }), ' empezar · ', h('kbd', { text: '1' }), ' ', h('kbd', { text: '2' }), ' ', h('kbd', { text: '3' }), ' dificultad · ', h('kbd', { text: 'tab' }), ' reiniciar · ', h('kbd', { text: 'esc' }), ' pausa · ', h('kbd', { text: '⌫' }), ' soltar objetivo'))));
     setConsumer(this);
   }
   showOv(content) { this.ov.replaceChildren(content); this.ov.hidden = false; }
@@ -144,24 +145,66 @@ export class Arcade {
       paused: false, userPaused: false, choices: null, flash: 0, shake: 0, dist: 0, jump: 0, fever: false, freezeT: 0, slowT: 0, powers: 0, cleared: 0, bosses: 0, perfect: 0,
       saved: false, coins: 0, coinT: 3500, jumps: 0, chain: 0, maxChain: 0, lastKill: -9999, golden: 0, turret: 0, turretT: 0, milestone: 100, runMis: [false, false, false],
     });
+    this.rand = this.mp ? rng((this.mp.seed ^ this.kind.length * 7919) >>> 0) : Math.random;
+    this.nextId = 1; this.lastSnap = 0; this.lastStatus = 0; this.atk = 0; this.killed = new Map();
     this.maxLives = this.lives = Math.max(2, { caen: 5, torre: 10, runner: 3, bombas: 5 }[this.kind] + this.D.lives);
     this.buildPath();
     if (this.kind === 'torre') { this.wave = 0; this.frost = 1; this.shock = 0; this.nextWave(); }
     this.ov.hidden = true; this.running = true; this.last = now(); setConsumer(this);
     this.raf = requestAnimationFrame(t => this.frame(t));
   }
+  /* ---------- multijugador ----------
+     mp = { seed, diff, role: 'host'|'guest'|'battle', me, roster:[{id,name,color}], coop,
+            onStatus, onDead, onAttack, onHit, onSnapshot, onEnd } */
+  startMp(mp) { this.mp = mp; this.mirror = mp.role === 'guest' && this.kind === 'torre'; this.start(); }
+  receiveGarbage(n) {
+    if (!this.running || this.kind !== 'caen') return;
+    const sc = this.sc, list = VOCAB.dificil;
+    for (let i = 0; i < n; i++) {
+      const w = list[Math.floor(Math.random() * list.length)], x = 40 + Math.random() * (this.W - 80 - w.length * 11 * sc);
+      this.ents.push({ word: w, typed: 0, x, x0: x, y: -10 - i * 34, v: (34 + this.level * 6) * sc * this.D.speed, type: 'rapida', garbage: true, ph: 0 });
+    }
+    this.float(this.W / 2, this.H * .2, n > 1 ? `¡te mandaron ${n} palabras!` : '¡te mandaron basura!', this.c.err, 18); Sfx.miss();
+  }
+  winMp() { if (!this.running) return; this.recordRun(true); this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); Sfx.mission();
+    this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* sala online' }), h('h2', { text: '¡ganaste!' }), h('p', { class: 'sub', text: `${this.score} puntos · último en pie` }))); }
+  endRemote(sum) { this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); this.draw();
+    this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* sala online' }), h('h2', { text: sum && sum.coop ? 'la base cayó' : 'fin de la ronda' }), h('p', { class: 'sub', text: sum && sum.coop ? `${sum.score} puntos en equipo · oleada ${sum.wave}` : '' }))); }
+  snapshot() {
+    return { lives: this.lives, wave: this.wave, score: this.score, banner: Math.round(this.banner || 0), boss: this.boss, frost: this.frost, choosing: !!this.choices, turret: this.turret,
+      ents: this.ents.map(e => ({ id: e.id, w: e.word, d: Math.round(e.d * 10) / 10, p: e.p, v: e.v, type: e.type, boss: !!e.boss, link: e.link || 0, part: e.part || 0, owner: e.owner || null, color: e.color || null, done: !!e.done, stage: e.stage || 0, pw: e.pw || null })) };
+  }
+  applySnapshot(sn) {
+    this.lives = sn.lives; this.wave = sn.wave; this.score = sn.score; this.banner = sn.banner; this.boss = sn.boss; this.frost = sn.frost; this.turret = sn.turret;
+    const byId = new Map(this.ents.map(e => [e.id, e])), t = now(), next = [];
+    for (const se of sn.ents) {
+      const k = this.killed.get(se.id); if (k && t - k < 1500 && !se.link) continue;
+      let e = byId.get(se.id); if (!e) e = { id: se.id, typed: 0 };
+      if (e.word !== se.w) { e.typed = 0; if (this.target === e) this.target = null; }
+      Object.assign(e, { word: se.w, d: se.d, p: se.p, v: se.v, type: se.type, boss: se.boss, link: se.link, part: se.part, owner: se.owner, color: se.color, done: se.done || (k && t - k < 1500 && se.link ? true : se.done), stage: se.stage, pw: se.pw });
+      next.push(e);
+    }
+    this.ents = next; if (this.target && !next.includes(this.target)) this.target = null;
+    if (sn.choosing && !this.waitOv) { this.waitOv = true; this.showOv(h('div', { class: 'inner' }, h('h2', { text: 'oleada superada' }), h('p', { class: 'sub', text: 'el anfitrión está eligiendo una mejora…' }))); }
+    else if (!sn.choosing && this.waitOv) { this.waitOv = false; this.ov.hidden = true; }
+  }
+  remoteHit(id) { const e = this.ents.find(o => o.id === id); if (e && !e.done && this.running) this.kill(e, true); }
   stop() { this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); }
   emitFever(on) { if (this._fever === on) return; this._fever = on; window.dispatchEvent(new CustomEvent('tecla:fever', { detail: on })); }
   destroy() { this.stop(); this.ro?.disconnect(); }
-  enter() { if (!this.running) this.start(); else if (this.userPaused) this.resume(); }
-  tab() { this.start(); }
-  esc() { if (this.running && !this.choices && !this.userPaused) { this.userPaused = this.paused = true; this.showOv(h('div', { class: 'inner' }, h('h2', { text: 'pausa' }), h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'seguir', onclick: () => this.resume() }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' }))))); } }
+  enter() { if (this.mp) return; if (!this.running) this.start(); else if (this.userPaused) this.resume(); }
+  tab() { if (this.mp) return; this.start(); }
+  esc() { if (this.mp) return; if (this.running && !this.choices && !this.userPaused) { this.userPaused = this.paused = true; this.showOv(h('div', { class: 'inner' }, h('h2', { text: 'pausa' }), h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'seguir', onclick: () => this.resume() }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' }))))); } }
   resume() { this.userPaused = this.paused = false; this.ov.hidden = true; this.last = now(); focusKb(); }
   frame(t) {
     if (!this.running) return;
     const dt = Math.min(50, t - this.last); this.last = t;
     if (!this.paused) { this.t += dt; this.update(dt); }
     this.draw(); this.hud();
+    if (this.mp) {
+      if (this.mp.role === 'host' && this.kind === 'torre' && t - this.lastSnap > 90) { this.lastSnap = t; this.mp.onSnapshot?.(this.snapshot()); }
+      if (t - this.lastStatus > 300) { this.lastStatus = t; this.mp.onStatus?.({ lives: this.lives, score: this.score, level: this.kind === 'torre' ? this.wave : this.kind === 'runner' ? Math.round(this.dist) : this.level, alive: this.running }); }
+    }
     if (this.running) this.raf = requestAnimationFrame(x => this.frame(x));
   }
   pickWord(minL, maxL) {
@@ -171,25 +214,27 @@ export class Arcade {
     const fits = w => w.length >= minL && w.length <= maxL, fresh = w => !bag.recent.includes(w);
     for (const pred of [w => fits(w) && fresh(w) && !used.has(w[0]), w => fits(w) && fresh(w), w => w.length <= maxL + 4 && fresh(w), fresh]) {
       for (let pass = 0; pass < 2; pass++) {
-        if (!bag.b.length || pass) bag.b = shuffle(list);
+        if (!bag.b.length || pass) bag.b = shuffle(list, this.rand || Math.random);
         const i = bag.b.findIndex(pred);
         if (i >= 0) { const w = bag.b.splice(i, 1)[0]; bag.recent.push(w); if (bag.recent.length > 60) bag.recent.shift(); return w; }
       }
     }
-    return list[Math.floor(Math.random() * list.length)];
+    return list[Math.floor((this.rand || Math.random)() * list.length)];
   }
   maybePower(e) {
-    if (this.t > 5000 && Math.random() < 0.075) { const ks = Object.keys(POWERS).filter(k => k !== 'vida' || this.lives < this.maxLives); e.pw = ks[Math.floor(Math.random() * ks.length)]; }
+    const R = this.rand || Math.random;
+    if (this.t > 5000 && R() < 0.075) { const ks = Object.keys(POWERS).filter(k => k !== 'vida' || this.lives < this.maxLives); e.pw = ks[Math.floor(R() * ks.length)]; }
     return e;
   }
   danger(e) { return { caen: e.y, torre: this.prog(e), runner: e.coin ? -1e5 : -e.x, bombas: -e.fuse }[this.kind]; }
   char(c) {
-    if (!this.running) { const i = '123'.indexOf(c); if (i >= 0) this.setDiff(Object.keys(ADIFF)[i]); return; }
+    if (!this.running) { if (this.mp) return; const i = '123'.indexOf(c); if (i >= 0) this.setDiff(Object.keys(ADIFF)[i]); return; }
     if (this.paused) { if (this.choices) { const i = '123'.indexOf(c); if (i >= 0 && this.choices[i]) this.choose(this.choices[i]); } return; }
     if (this.target && !this.ents.includes(this.target)) this.target = null;
     if (!this.target) {
       if (c === ' ') return;
-      const cands = this.ents.filter(e => e.word[0] === c && !(this.kind === 'torre' && e.d < 0));
+      const me = this.mp?.me, tnow = now();
+      const cands = this.ents.filter(e => e.word[0] === c && !e.done && !(e.lock > tnow) && (!e.owner || e.owner === me) && !(this.kind === 'torre' && e.d < 0));
       this.keys++;
       if (!cands.length) return this.miss();
       cands.sort((a, b) => this.danger(b) - this.danger(a)); this.target = cands[0]; this.target.typed = 0;
@@ -207,8 +252,24 @@ export class Arcade {
   burst(x, y, n = 9, col) { const ch = ['*', '—', '|', '/', '*']; for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = 50 + Math.random() * 150; this.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, life: 1, ch: ch[i % ch.length], col: col || (this.fever ? this.c.acc2 : this.c.acc) }); } }
   pos(e) { if (this.kind === 'torre') return this.at(Math.max(0, e.d), e.p); return [e.x, e.y]; }
   remove(e) { this.ents = this.ents.filter(x => x !== e); if (this.target === e) this.target = null; }
-  kill(e) {
+  kill(e, remote = false) {
     const [x, y] = this.pos(e);
+    if (this.mirror && !remote) {
+      // invitado de la torre: el anfitrión decide; acá solo mostramos el golpe al instante
+      this.mp.onHit?.(e.id); this.combo++; this.kills++; Sfx.kill(this.combo); this.burst(x, y, 8, e.color || undefined);
+      if (this.target === e) this.target = null; e.typed = 0;
+      if (e.link) { e.done = true; this.killed.set(e.id, now()); }
+      else if (e.words || e.type === 'tank') { e.lock = now() + 500; }
+      else { this.killed.set(e.id, now()); this.remove(e); }
+      return;
+    }
+    if (e.link) {
+      e.done = true; e.typed = e.word.length; if (this.target === e) this.target = null;
+      const mates = this.ents.filter(o => o.link === e.link);
+      if (!mates.every(o => o.done)) { this.burst(x, y, 6, e.color || undefined); this.float(x, y - 44 * this.sc, 'falta tu compañero', e.color || this.c.acc2, 13); Sfx.key(); return; }
+      mates.forEach(o => { if (o !== e) this.remove(o); });
+      this.float(x, y - 60 * this.sc, '¡en equipo!', this.c.acc, 16);
+    }
     if (e.words && e.stage < e.words.length - 1) {
       e.stage++; e.word = e.words[e.stage]; e.typed = 0; this.combo++;
       this.burst(x, y, 6, this.c.acc2); Sfx.kill(this.combo); this.float(x, y - 30 * this.sc, 'escudo roto', this.c.acc2, 13); return;
@@ -216,7 +277,8 @@ export class Arcade {
     this.remove(e);
     this.combo++; this.kills++; this.maxCombo = Math.max(this.maxCombo, this.combo);
     this.chain = this.t - this.lastKill < 1300 ? this.chain + 1 : 1; this.lastKill = this.t; this.maxChain = Math.max(this.maxChain, this.chain);
-    let pts = e.word.length * 10 * (1 + Math.min(this.combo, 30) * 0.05) * this.mult * (e.boss ? 4 : 1) * (this.fever ? 2 : 1) * (e.type === 'rapida' ? 1.5 : 1) * (e.coin ? 3 : 1) * (e.type === 'mega' ? 2 : 1);
+    if (this.mp && this.kind === 'caen' && !e.garbage) { this.atk++; if (this.atk % 4 === 0) this.mp.onAttack?.(this.fever ? 2 : 1); }
+    let pts = e.word.length * 10 * (1 + Math.min(this.combo, 30) * 0.05) * this.mult * (e.boss ? 4 : 1) * (e.link ? 2.5 : 1) * (this.fever ? 2 : 1) * (e.type === 'rapida' ? 1.5 : 1) * (e.coin ? 3 : 1) * (e.type === 'mega' ? 2 : 1);
     if (this.kind === 'bombas' && this.chain >= 2) { pts *= 1 + this.chain * 0.25; this.float(x, y - 44 * this.sc, `cadena x${this.chain}`, this.c.acc2, 14); }
     pts = Math.round(pts * this.D.pts); this.score += pts;
     this.float(x, y - 22 * this.sc, '+' + pts, e.coin ? this.c.gold : this.c.acc, this.fever ? 17 : 15);
@@ -279,45 +341,55 @@ export class Arcade {
     if (this.kind === 'caen') {
       if (this.spawnT <= 0) {
         this.spawnT = Math.max(620, 2100 - L * 130) * this.D.spawn;
-        const r = Math.random(); let type = 'n';
+        const r = this.rand(); let type = 'n';
         if (L >= 2 && r < 0.13) type = 'rapida'; else if (L >= 2 && r < 0.24) type = 'zig'; else if (L >= 3 && r < 0.34) type = 'split';
         const w = type === 'rapida' ? this.pickWord(3, 5) : this.pickWord(3 + Math.min(4, Math.floor(L / 3)), 5 + Math.min(6, Math.floor(L / 2)));
-        const x = 40 + Math.random() * (W - 80 - w.length * 11 * sc);
-        this.ents.push(this.maybePower({ word: w, typed: 0, x, x0: x, y: -10, v: (22 + L * 5 + Math.random() * 10) * sc * this.D.speed * (type === 'rapida' ? 1.8 : 1), type, ph: Math.random() * 6 }));
+        const x = 40 + this.rand() * (W - 80 - w.length * 11 * sc);
+        this.ents.push(this.maybePower({ word: w, typed: 0, x, x0: x, y: -10, v: (22 + L * 5 + this.rand() * 10) * sc * this.D.speed * (type === 'rapida' ? 1.8 : 1), type, ph: this.rand() * 6 }));
       }
       for (const e of this.ents.slice()) {
         e.y += e.v * s;
         if (e.type === 'zig') e.x = clamp(e.x0 + Math.sin(e.y / 38 + e.ph) * 55 * sc, 20, W - 90);
         if (e.y > H - 26) { this.remove(e); this.hurt(1, e.x + 20, H - 26); if (!this.running) return; }
       }
+    } else if (this.kind === 'torre' && this.mirror) {
+      this.banner = Math.max(0, (this.banner || 0) - dt);
+      for (const e of this.ents) e.d += e.v * (this.frost || 1) * s;
     } else if (this.kind === 'torre') {
       this.banner = Math.max(0, (this.banner || 0) - dt);
       if (this.toSpawn > 0 && this.spawnT <= 0) {
         this.spawnT = Math.max(650, 1700 - this.wave * 70) * this.D.spawn; this.toSpawn--;
-        const np = this.paths.length, p = np === 1 ? 0 : (this.lastP = ((this.lastP || 0) + 1 + (Math.random() < .35 ? 1 : 0)) % np);
-        const r = Math.random(); let e;
+        const np = this.paths.length, p = np === 1 ? 0 : (this.lastP = ((this.lastP || 0) + 1 + (this.rand() < .35 ? 1 : 0)) % np);
+        const r = this.rand(); let e;
         if (this.wave >= 3 && r < 0.2) { const ws = [this.pickWord(3, 5), this.pickWord(4, 6)]; e = { words: ws, stage: 0, word: ws[0], typed: 0, d: 0, v: (22 + this.wave * 2) * sc, type: 'tank' }; }
         else if (this.wave >= 2 && r < 0.45) e = { word: this.pickWord(3, 4), typed: 0, d: 0, v: (54 + this.wave * 4) * sc, type: 'scout' };
-        else e = { word: this.pickWord(3, Math.min(9, 4 + Math.floor(this.wave / 2))), typed: 0, d: 0, v: (30 + this.wave * 3 + Math.random() * 8) * sc, type: 'n' };
-        e.p = p; e.v *= this.D.speed; this.ents.push(this.maybePower(e));
-        if (this.toSpawn === 0 && this.boss) { const ph = SENTENCES[Math.floor(Math.random() * SENTENCES.length)].toLowerCase().replace(/[.,]/g, '').split(' ').slice(0, 3 + Math.min(3, Math.floor(this.wave / 5))).join(' '); this.ents.push({ word: ph, typed: 0, d: -80 * sc, v: 17 * sc * this.D.speed, boss: true, type: 'boss', p: Math.floor(Math.random() * this.paths.length) }); }
+        else e = { word: this.pickWord(3, Math.min(9, 4 + Math.floor(this.wave / 2))), typed: 0, d: 0, v: (30 + this.wave * 3 + this.rand() * 8) * sc, type: 'n' };
+        e.p = p; e.v *= this.D.speed; e.id = this.nextId++;
+        const roster = this.mp?.coop ? this.mp.roster || [] : [];
+        if (roster.length >= 2 && this.wave >= 2 && this.rand() < 0.3 && !e.words) {
+          // bicho doble: una palabra para cada uno de dos jugadores, con su color
+          const pair = shuffle(roster, this.rand).slice(0, 2), link = this.nextId++;
+          pair.forEach((pl, i) => this.ents.push({ word: this.pickWord(3, 6), typed: 0, d: 0, v: e.v * 0.8, p, type: 'duo', owner: pl.id, color: pl.color, link, part: i, id: this.nextId++ }));
+        } else this.ents.push(this.maybePower(e));
+        if (this.toSpawn === 0 && this.boss) { const ph = SENTENCES[Math.floor(this.rand() * SENTENCES.length)].toLowerCase().replace(/[.,]/g, '').split(' ').slice(0, 3 + Math.min(3, Math.floor(this.wave / 5))).join(' '); this.ents.push({ id: this.nextId++, word: ph, typed: 0, d: -80 * sc, v: 17 * sc * this.D.speed, boss: true, type: 'boss', p: Math.floor(this.rand() * this.paths.length) }); }
       }
       if (this.turret) {
         this.turretT -= wdt;
         if (this.turretT <= 0) {
           this.turretT = Math.max(2200, 8000 - this.turret * 1800);
-          const tg = this.ents.filter(o => !o.boss && o.d >= 0).sort((a, b) => this.prog(b) - this.prog(a))[0];
+          const tg = this.ents.filter(o => !o.boss && !o.link && o.d >= 0).sort((a, b) => this.prog(b) - this.prog(a))[0];
           if (tg) { const [tx, ty] = this.at(tg.d, tg.p); this.lasers.push({ x1: this.base[0], y1: this.base[1], x2: tx, y2: ty, life: 1 }); tg.words = null; this.kill(tg); }
         }
       }
-      for (const e of this.ents.slice()) { e.d += e.v * this.frost * s; if (e.d >= this.paths[e.p || 0].len) { this.remove(e); this.hurt(e.boss ? 3 : 1, this.base[0], this.base[1]); if (!this.running) return; } }
+      const hitLinks = new Set();
+      for (const e of this.ents.slice()) { e.d += e.v * this.frost * s; if (e.d >= this.paths[e.p || 0].len) { this.remove(e); if (e.link) { if (hitLinks.has(e.link)) continue; hitLinks.add(e.link); this.ents.filter(o => o.link === e.link).forEach(o => this.remove(o)); } this.hurt(e.boss ? 3 : e.link ? 2 : 1, this.base[0], this.base[1]); if (!this.running) return; } }
       if (this.toSpawn === 0 && !this.ents.length && !this.paused && !this.betweenWaves) this.waveDone();
     } else if (this.kind === 'runner') {
       const speed = (130 + L * 16) * sc * this.D.speed, ground = H * 0.74, px = 70 * sc + 30;
       this.dist += speed * s / 40; this.jump = Math.max(0, this.jump - dt / 1000 * 2.2); this.coinT -= wdt;
       if (this.dist >= this.milestone) { this.float(W / 2, H * .3, `${this.milestone} m`, this.c.acc, 22); Sfx.seq([660, 990], 80); this.milestone += 100; }
-      if (this.spawnT <= 0) { this.spawnT = Math.max(950, 2500 - L * 130) * this.D.spawn * (0.8 + Math.random() * 0.5); this.ents.push(this.maybePower({ word: this.pickWord(3, Math.min(9, 4 + Math.floor(L / 2))), typed: 0, x: W + 20, y: ground, hgt: 18 + Math.random() * 22, rock: Math.random() < 0.4 })); }
-      if (this.coinT <= 0) { this.coinT = 3000 + Math.random() * 3500; this.ents.push({ word: this.pickWord(4, 7), typed: 0, x: W + 30, y: ground - (95 + Math.random() * 40) * sc, coin: true }); }
+      if (this.spawnT <= 0) { this.spawnT = Math.max(950, 2500 - L * 130) * this.D.spawn * (0.8 + this.rand() * 0.5); this.ents.push(this.maybePower({ word: this.pickWord(3, Math.min(9, 4 + Math.floor(L / 2))), typed: 0, x: W + 20, y: ground, hgt: 18 + this.rand() * 22, rock: this.rand() < 0.4 })); }
+      if (this.coinT <= 0) { this.coinT = 3000 + this.rand() * 3500; this.ents.push({ word: this.pickWord(4, 7), typed: 0, x: W + 30, y: ground - (95 + this.rand() * 40) * sc, coin: true }); }
       for (const e of this.ents.slice()) {
         e.x -= speed * s;
         if (e.coin) { if (e.x < -40) this.remove(e); }
@@ -328,9 +400,9 @@ export class Arcade {
       if (this.spawnT <= 0 && this.ents.length < maxB) {
         this.spawnT = Math.max(700, 1700 - L * 90) * this.D.spawn;
         for (let tries = 0; tries < 25; tries++) {
-          const x = 60 + Math.random() * (W - 120), y = 50 + Math.random() * (H - 110);
+          const x = 60 + this.rand() * (W - 120), y = 50 + this.rand() * (H - 110);
           if (this.ents.every(e => Math.hypot(e.x - x, e.y - y) > 125 * sc)) {
-            const r = Math.random(), type = r < 0.1 ? 'gold' : (L >= 3 && r < 0.22) ? 'mega' : 'n';
+            const r = this.rand(), type = r < 0.1 ? 'gold' : (L >= 3 && r < 0.22) ? 'mega' : 'n';
             const f = Math.max(3.8, 9 - L * 0.5) * 1000 * this.D.fuse * (type === 'mega' ? 1.4 : 1);
             const w = type === 'mega' ? this.pickWord(6, 10) : this.pickWord(3, Math.min(9, 4 + Math.floor(L / 2)));
             this.ents.push(this.maybePower({ word: w, typed: 0, x, y, fuse: f, total: f, type })); break;
@@ -366,11 +438,14 @@ export class Arcade {
     const w = x.measureText(e.word).width, pad = e.pw ? fs + 4 : 0, left = cx - (w + pad) / 2 + pad, tgt = e === this.target;
     const bx = left - pad - 7, by = cy - fs * .78, bw = w + pad + 14, bh = fs * 1.56;
     x.fillStyle = this.c.bg; x.globalAlpha = .95; this.rr(bx, by, bw, bh, 7); x.fill(); x.globalAlpha = 1;
-    x.lineWidth = tgt ? 2 : 1; x.strokeStyle = tgt ? this.c.acc : e.coin ? this.c.gold : e.type === 'rapida' ? this.c.err : this.c.dim; this.rr(bx, by, bw, bh, 7); x.stroke();
+    if (e.done) x.globalAlpha = .35;
+    x.lineWidth = tgt || e.color ? 2 : 1; x.strokeStyle = e.color || (tgt ? this.c.acc : e.coin ? this.c.gold : e.type === 'rapida' ? this.c.err : this.c.dim); this.rr(bx, by, bw, bh, 7); x.stroke();
+    if (e.color) { x.fillStyle = e.color; x.beginPath(); x.arc(bx + 1, by + 1, 4, 0, Math.PI * 2); x.fill(); }
     if (e.pw) { x.fillStyle = this.c.acc2; x.beginPath(); x.arc(left - pad / 2 - 2, cy, fs * .52, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.font = `600 ${Math.round(fs * .75)}px sans-serif`; x.fillText(POWERS[e.pw].g, left - pad / 2 - 2, cy + 1); x.textAlign = 'left'; x.font = `500 ${fs}px "IBM Plex Mono", ui-monospace, monospace`; }
     const done = e.word.slice(0, e.typed), rest = e.word.slice(e.typed);
     x.fillStyle = this.c.acc; x.fillText(done, left, cy);
     x.fillStyle = e.boss || e.type === 'rapida' ? this.c.err : e.coin ? this.c.gold : this.c.ink; x.fillText(rest, left + x.measureText(done).width, cy);
+    x.globalAlpha = 1;
     if (e.type === 'split') { x.strokeStyle = this.c.acc2; x.setLineDash([3, 3]); x.beginPath(); x.moveTo(left, cy + fs * .62); x.lineTo(left + w, cy + fs * .62); x.stroke(); x.setLineDash([]); }
   }
   rr(x0, y0, w, hh, r) { const x = this.ctx; x.beginPath(); x.moveTo(x0 + r, y0); x.arcTo(x0 + w, y0, x0 + w, y0 + hh, r); x.arcTo(x0 + w, y0 + hh, x0, y0 + hh, r); x.arcTo(x0, y0 + hh, x0, y0, r); x.arcTo(x0, y0, x0 + w, y0, r); x.closePath(); }
@@ -403,9 +478,10 @@ export class Arcade {
         const [ex, ey] = this.at(e.d, e.p);
         if (e.boss) { const s = 22 * sc; x.fillStyle = this.c.err; this.rr(ex - s / 2, ey - s / 2, s, s, 4); x.fill(); }
         else if (e.type === 'scout') { const s = 9 * sc; x.fillStyle = this.c.acc2; x.beginPath(); x.moveTo(ex + s, ey); x.lineTo(ex - s, ey - s * .8); x.lineTo(ex - s, ey + s * .8); x.closePath(); x.fill(); }
+        else if (e.type === 'duo') { const s = 16 * sc; x.fillStyle = e.color || this.c.sub; x.globalAlpha = e.done ? .4 : 1; x.beginPath(); x.moveTo(ex, ey - s / 2); x.lineTo(ex, ey + s / 2); if (e.part === 0) x.arc(ex, ey, s / 2, Math.PI / 2, Math.PI * 1.5); else x.arc(ex, ey, s / 2, -Math.PI / 2, Math.PI / 2); x.fill(); x.globalAlpha = 1; }
         else if (e.type === 'tank') { const s = 15 * sc; x.fillStyle = this.c.sub; this.rr(ex - s / 2, ey - s / 2, s, s, 3); x.fill(); if (e.stage === 0) { x.strokeStyle = this.c.acc2; x.lineWidth = 2.5; x.beginPath(); x.arc(ex, ey, s * .95, 0, Math.PI * 2); x.stroke(); } }
         else { const s = 11 * sc; x.fillStyle = this.c.sub; this.rr(ex - s / 2, ey - s / 2, s, s, 3); x.fill(); }
-        this.word(e, ex, ey - 19 * clamp(sc, .8, 1.1), e.boss);
+        this.word(e, ex, ey - (19 + (e.link ? e.part * 24 : 0)) * clamp(sc, .8, 1.1), e.boss);
       }
       if (this.banner > 0) { x.globalAlpha = Math.min(1, this.banner / 500); x.fillStyle = this.c.acc; x.font = `800 ${Math.round(26 * sc)}px "Martian Mono", monospace`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(this.boss ? `oleada ${this.wave} · ¡jefe!` : `oleada ${this.wave}`, W / 2, H * .5); x.textAlign = 'left'; x.globalAlpha = 1; }
     } else if (this.kind === 'runner') {
@@ -464,21 +540,28 @@ export class Arcade {
     if (changed) store.set('mis:' + this.kind, done);
   }
   hud() {
-    const set = (id, v) => { const el = $(id); if (el.textContent !== String(v)) el.textContent = v; };
+    const set = (id, v) => { const el = $(id); if (el && el.textContent !== String(v)) el.textContent = v; };
     set('#arc-score', this.score);
     set('#arc-level', this.kind === 'torre' ? this.wave : this.kind === 'runner' ? Math.round(this.dist) : this.level);
     set('#arc-lives', this.lives > 8 ? `* ×${this.lives}` : '* '.repeat(this.lives).trim() || '—');
     set('#arc-wpm', this.t > 1000 ? Math.round(this.chars / 5 / (this.t / 60000)) : 0);
     set('#arc-acc', (this.keys ? Math.round(this.hits / this.keys * 100) : 100) + '%');
     set('#arc-combo', 'x' + this.combo + (this.fever ? ' · fiebre' : ''));
-    $('#arc-combo').classList.toggle('hot', this.fever);
-    if (this.running) this.checkMissions();
+    $('#arc-combo')?.classList.toggle('hot', this.fever);
+    if (this.running && !this.mp) this.checkMissions();
     this.emitFever(!!(this.running && this.fever));
   }
   over() {
+    if (this.mp) {
+      this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); this.draw(); Sfx.over(); this.recordRun(true);
+      this.mp.onStatus?.({ lives: 0, score: this.score, level: this.kind === 'torre' ? this.wave : this.kind === 'runner' ? Math.round(this.dist) : this.level, alive: false });
+      if (this.mp.coop) { this.mp.onEnd?.({ coop: true, score: this.score, wave: this.wave }); this.endRemote({ coop: true, score: this.score, wave: this.wave }); }
+      else { this.mp.onDead?.({ score: this.score }); this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* sala online' }), h('h2', { text: 'quedaste afuera' }), h('p', { class: 'sub', text: `${this.score} puntos · mirá cómo sigue la ronda` }))); }
+      return;
+    }
     this.running = false; cancelAnimationFrame(this.raf); this.checkMissions(); this.draw(); this.hud(); Sfx.over();
     const best = store.get(this.bestKey(), 0), rec = this.score > best; this.recordRun(true); this.diffBar();
-    $('#arc-best').textContent = Math.max(best, this.score);
+    const bestEl = $('#arc-best'); if (bestEl) bestEl.textContent = Math.max(best, this.score);
     const where = this.kind === 'torre' ? `llegaste a la oleada ${this.wave}` : this.kind === 'runner' ? `corriste ${Math.round(this.dist)} metros · ${this.coins} monedas` : `llegaste al nivel ${this.level}`;
     const fresh = this.newMis; this.newMis = null;
     this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: (rec ? '* nuevo récord' : '* fin del juego') + ' · ' + this.D.name }), h('h2', { text: `${this.score} puntos` }),

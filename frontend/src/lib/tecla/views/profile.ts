@@ -13,7 +13,8 @@ export const ProfileView: any = {
   filter: 'all', page: 0, editing: false, editMsg: '', unsub: null as null | (() => void),
   enter() {
     setConsumer(null); this.page = 0;
-    this.unsub = History.subscribe(() => this.render());
+    // si estás escribiendo en el editor, no redibujar (se perdería lo tipeado)
+    this.unsub = History.subscribe(() => { if (this.editing && (document.activeElement as HTMLElement | null)?.closest?.('.editor')) return; this.render(); });
     this.onResize = () => this.render(); window.addEventListener('resize', this.onResize);
     this.render();
   },

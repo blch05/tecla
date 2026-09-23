@@ -118,6 +118,7 @@ El cambio climático intensifica el ciclo del agua. Una atmósfera más cálida 
 
 // bolsa mezclada: recorre toda la lista antes de repetir una palabra (y es reproducible con la semilla)
 export function wordGen(seed, list = VOCAB.medio) {
+  if (!list || !list.length) throw new Error('wordGen: la lista de palabras está vacía');
   const r = rng(seed); let bag = [], prev = '';
   return n => {
     const out = [];
