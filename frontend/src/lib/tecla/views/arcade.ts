@@ -156,7 +156,41 @@ export class Arcade {
   /* ---------- multijugador ----------
      mp = { seed, diff, role: 'host'|'guest'|'battle', me, roster:[{id,name,color}], coop,
             onStatus, onDead, onAttack, onHit, onSnapshot, onEnd } */
-  startMp(mp) { this.mp = mp; this.mirror = mp.role === 'guest' && this.kind === 'torre'; this.start(); }
+  startMp(mp) {
+    this.mp = mp; this.mirror = mp.role === 'guest' && this.kind === 'torre';
+    this.activeIds = (mp.roster || []).map(r => r.id);
+    this.start();
+    const mine = (mp.roster || []).find(r => r.id === mp.me);
+    if (mp.coop && mine && (mp.roster || []).length >= 2) this.float(this.W / 2, this.H * .36, 'escribí las palabras de tu color', mine.color, 17);
+  }
+  /* torre cooperativa: cada bicho es de un jugador (su color) y solo ese jugador puede escribirlo */
+  coopPlayers() {
+    if (!this.mp?.coop) return [];
+    const ids = new Set(this.activeIds || []);
+    return (this.mp.roster || []).filter(r => ids.has(r.id));
+  }
+  assignOwner(e) {
+    const ps = this.coopPlayers();
+    if (ps.length < 2) { e.owner = null; e.color = null; return e; }
+    // al que menos palabras tiene en pantalla (empate: al azar con la semilla)
+    const load = id => this.ents.filter(o => o.owner === id && !o.done).length;
+    const pl = shuffle(ps, this.rand).sort((a, b) => load(a.id) - load(b.id))[0];
+    e.owner = pl.id; e.color = pl.color; return e;
+  }
+  /* el anfitrión avisa quién sigue en la sala: las palabras de quien se fue pasan a otro */
+  setActivePlayers(ids) {
+    if (!this.mp?.coop || this.mirror) return;
+    const prev = (this.activeIds || []).join(','); this.activeIds = ids.slice();
+    if (prev === this.activeIds.join(',')) return;
+    const alive = new Set(ids), ps = this.coopPlayers();
+    for (const e of this.ents) {
+      if (ps.length < 2 && !e.link) { e.owner = null; e.color = null; continue; }
+      if (e.owner && !alive.has(e.owner)) {
+        if (e.link && ps.length < 2) { const pl = ps[0]; e.owner = pl ? pl.id : null; e.color = pl ? pl.color : null; }
+        else this.assignOwner(e);
+      }
+    }
+  }
   receiveGarbage(n) {
     if (!this.running || this.kind !== 'caen') return;
     const sc = this.sc, list = VOCAB.dificil;
@@ -365,13 +399,13 @@ export class Arcade {
         else if (this.wave >= 2 && r < 0.45) e = { word: this.pickWord(3, 4), typed: 0, d: 0, v: (54 + this.wave * 4) * sc, type: 'scout' };
         else e = { word: this.pickWord(3, Math.min(9, 4 + Math.floor(this.wave / 2))), typed: 0, d: 0, v: (30 + this.wave * 3 + this.rand() * 8) * sc, type: 'n' };
         e.p = p; e.v *= this.D.speed; e.id = this.nextId++;
-        const roster = this.mp?.coop ? this.mp.roster || [] : [];
+        const roster = this.coopPlayers();
         if (roster.length >= 2 && this.wave >= 2 && this.rand() < 0.3 && !e.words) {
           // bicho doble: una palabra para cada uno de dos jugadores, con su color
           const pair = shuffle(roster, this.rand).slice(0, 2), link = this.nextId++;
           pair.forEach((pl, i) => this.ents.push({ word: this.pickWord(3, 6), typed: 0, d: 0, v: e.v * 0.8, p, type: 'duo', owner: pl.id, color: pl.color, link, part: i, id: this.nextId++ }));
-        } else this.ents.push(this.maybePower(e));
-        if (this.toSpawn === 0 && this.boss) { const ph = SENTENCES[Math.floor(this.rand() * SENTENCES.length)].toLowerCase().replace(/[.,]/g, '').split(' ').slice(0, 3 + Math.min(3, Math.floor(this.wave / 5))).join(' '); this.ents.push({ id: this.nextId++, word: ph, typed: 0, d: -80 * sc, v: 17 * sc * this.D.speed, boss: true, type: 'boss', p: Math.floor(this.rand() * this.paths.length) }); }
+        } else this.ents.push(this.assignOwner(this.maybePower(e)));
+        if (this.toSpawn === 0 && this.boss) { const ph = SENTENCES[Math.floor(this.rand() * SENTENCES.length)].toLowerCase().replace(/[.,]/g, '').split(' ').slice(0, 3 + Math.min(3, Math.floor(this.wave / 5))).join(' '); this.ents.push(this.assignOwner({ id: this.nextId++, word: ph, typed: 0, d: -80 * sc, v: 17 * sc * this.D.speed, boss: true, type: 'boss', p: Math.floor(this.rand() * this.paths.length) })); }
       }
       if (this.turret) {
         this.turretT -= wdt;
@@ -438,8 +472,9 @@ export class Arcade {
     const w = x.measureText(e.word).width, pad = e.pw ? fs + 4 : 0, left = cx - (w + pad) / 2 + pad, tgt = e === this.target;
     const bx = left - pad - 7, by = cy - fs * .78, bw = w + pad + 14, bh = fs * 1.56;
     x.fillStyle = this.c.bg; x.globalAlpha = .95; this.rr(bx, by, bw, bh, 7); x.fill(); x.globalAlpha = 1;
-    if (e.done) x.globalAlpha = .35;
-    x.lineWidth = tgt || e.color ? 2 : 1; x.strokeStyle = e.color || (tgt ? this.c.acc : e.coin ? this.c.gold : e.type === 'rapida' ? this.c.err : this.c.dim); this.rr(bx, by, bw, bh, 7); x.stroke();
+    const theirs = e.owner && this.mp && e.owner !== this.mp.me;
+    if (e.done) x.globalAlpha = .35; else if (theirs) x.globalAlpha = .55;
+    x.lineWidth = tgt || (e.color && !theirs) ? 2.5 : e.color ? 1.5 : 1; x.strokeStyle = e.color || (tgt ? this.c.acc : e.coin ? this.c.gold : e.type === 'rapida' ? this.c.err : this.c.dim); this.rr(bx, by, bw, bh, 7); x.stroke();
     if (e.color) { x.fillStyle = e.color; x.beginPath(); x.arc(bx + 1, by + 1, 4, 0, Math.PI * 2); x.fill(); }
     if (e.pw) { x.fillStyle = this.c.acc2; x.beginPath(); x.arc(left - pad / 2 - 2, cy, fs * .52, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.font = `600 ${Math.round(fs * .75)}px sans-serif`; x.fillText(POWERS[e.pw].g, left - pad / 2 - 2, cy + 1); x.textAlign = 'left'; x.font = `500 ${fs}px "IBM Plex Mono", ui-monospace, monospace`; }
     const done = e.word.slice(0, e.typed), rest = e.word.slice(e.typed);
@@ -476,11 +511,11 @@ export class Arcade {
       for (const e of this.ents) {
         if (e.d < 0) continue;
         const [ex, ey] = this.at(e.d, e.p);
-        if (e.boss) { const s = 22 * sc; x.fillStyle = this.c.err; this.rr(ex - s / 2, ey - s / 2, s, s, 4); x.fill(); }
-        else if (e.type === 'scout') { const s = 9 * sc; x.fillStyle = this.c.acc2; x.beginPath(); x.moveTo(ex + s, ey); x.lineTo(ex - s, ey - s * .8); x.lineTo(ex - s, ey + s * .8); x.closePath(); x.fill(); }
+        if (e.boss) { const s = 22 * sc; x.fillStyle = e.color || this.c.err; this.rr(ex - s / 2, ey - s / 2, s, s, 4); x.fill(); }
+        else if (e.type === 'scout') { const s = 9 * sc; x.fillStyle = e.color || this.c.acc2; x.beginPath(); x.moveTo(ex + s, ey); x.lineTo(ex - s, ey - s * .8); x.lineTo(ex - s, ey + s * .8); x.closePath(); x.fill(); }
         else if (e.type === 'duo') { const s = 16 * sc; x.fillStyle = e.color || this.c.sub; x.globalAlpha = e.done ? .4 : 1; x.beginPath(); x.moveTo(ex, ey - s / 2); x.lineTo(ex, ey + s / 2); if (e.part === 0) x.arc(ex, ey, s / 2, Math.PI / 2, Math.PI * 1.5); else x.arc(ex, ey, s / 2, -Math.PI / 2, Math.PI / 2); x.fill(); x.globalAlpha = 1; }
-        else if (e.type === 'tank') { const s = 15 * sc; x.fillStyle = this.c.sub; this.rr(ex - s / 2, ey - s / 2, s, s, 3); x.fill(); if (e.stage === 0) { x.strokeStyle = this.c.acc2; x.lineWidth = 2.5; x.beginPath(); x.arc(ex, ey, s * .95, 0, Math.PI * 2); x.stroke(); } }
-        else { const s = 11 * sc; x.fillStyle = this.c.sub; this.rr(ex - s / 2, ey - s / 2, s, s, 3); x.fill(); }
+        else if (e.type === 'tank') { const s = 15 * sc; x.fillStyle = e.color || this.c.sub; this.rr(ex - s / 2, ey - s / 2, s, s, 3); x.fill(); if (e.stage === 0) { x.strokeStyle = this.c.acc2; x.lineWidth = 2.5; x.beginPath(); x.arc(ex, ey, s * .95, 0, Math.PI * 2); x.stroke(); } }
+        else { const s = 11 * sc; x.fillStyle = e.color || this.c.sub; this.rr(ex - s / 2, ey - s / 2, s, s, 3); x.fill(); }
         this.word(e, ex, ey - (19 + (e.link ? e.part * 24 : 0)) * clamp(sc, .8, 1.1), e.boss);
       }
       if (this.banner > 0) { x.globalAlpha = Math.min(1, this.banner / 500); x.fillStyle = this.c.acc; x.font = `800 ${Math.round(26 * sc)}px "Martian Mono", monospace`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(this.boss ? `oleada ${this.wave} · ¡jefe!` : `oleada ${this.wave}`, W / 2, H * .5); x.textAlign = 'left'; x.globalAlpha = 1; }

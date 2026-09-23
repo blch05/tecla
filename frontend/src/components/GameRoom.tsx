@@ -1,7 +1,8 @@
 'use client';
 
 /* Sala online para el arcade y el battle royale de tipeo (Supabase Realtime).
-   - presencia: jugadores, color, estado (vivo, vidas, puntos) y la configuración del anfitrión
+   - presencia: quién está, su nombre, color y la configuración del anfitrión
+   - broadcast "st": el estado de juego de cada uno (vivo, vidas, puntos), con versión (ver roomSync)
    - broadcast: start · garbage (ataque) · hit/snap (torre cooperativa) · elim (royale) · end
    El anfitrión es quien llegó primero; si se va, lo hereda el siguiente. */
 import Link from 'next/link';
@@ -10,6 +11,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
 import { closeRoom, publishRoom, roomToken, type RoomGame, seatId } from '@/lib/rooms';
 import { clampGarbage, decideEnd, pickEliminated, resolveColor, standings as rankStandings } from '@/lib/roomLogic';
+import { newestMetas, RoomMembers, sameMembers } from '@/lib/roomSync';
 
 type GameKey = 'bombas' | 'runner' | 'caen' | 'torre' | 'royale';
 type Diff = 'facil' | 'medio' | 'dificil';
@@ -19,7 +21,7 @@ const GAMES: Record<GameKey, { name: string; mode: 'battle' | 'coop' | 'royale';
   bombas: { name: 'bombas', mode: 'battle', desc: 'Cada uno desactiva sus propias bombas, con la misma semilla para todos. Gana el último que queda con vidas.' },
   runner: { name: 'runner', mode: 'battle', desc: 'Cada uno corre su carrera de obstáculos. Gana el último en pie.' },
   caen: { name: 'palabras que caen · ataque', mode: 'battle', desc: 'Cada 4 aciertos le mandás palabras basura a un rival al azar. Gana el último en pie.' },
-  torre: { name: 'defensa de torre · cooperativo', mode: 'coop', desc: 'Defienden la misma base. Los bichos dobles traen una palabra para cada jugador, marcada con su color: tienen que escribirla los dos.' },
+  torre: { name: 'defensa de torre · cooperativo', mode: 'coop', desc: 'Defienden la misma base. Cada bicho tiene el color de un jugador y solo él puede escribir su palabra; los bichos dobles traen una palabra para cada uno de dos jugadores.' },
   royale: { name: 'battle royale de tipeo', mode: 'royale', desc: 'Todos tipean el mismo texto. Cada 20 segundos queda afuera quien menos letras correctas escribió en esa ronda.' },
 };
 const DIFFS: Record<Diff, string> = { facil: 'fácil', medio: 'medio', dificil: 'difícil' };
@@ -32,6 +34,7 @@ interface Player {
   round: number; alive: boolean; lives: number; score: number; level: number; deadAt: number | null;
   rr?: number; rc?: number; // royale: ronda y letras de esa ronda
   cfg?: Cfg;
+  v?: number; // versión del estado: gana la más nueva
 }
 interface StartPayload { game: GameKey; diff: Diff; seed: number; round: number; roster: { id: string; name: string; color: string }[] }
 
@@ -51,6 +54,9 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const lastTrack = useRef(0);
   const trailing = useRef<number | null>(null);
   const inheritedTok = useRef<string | null>(null);
+  const membersRef = useRef(new RoomMembers<Player>(5000));
+  const lastSt = useRef(0);
+  const stTrailing = useRef<number | null>(null);
   // el anfitrión de la ronda es quien la arrancó; no depende de la lista de presencia
   // (si un jugador deja de ver al anfitrión un instante, no se autoproclama anfitrión)
   const roundHostRef = useRef<string | null>(null);
@@ -83,14 +89,34 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const fromRoster = (p: { from?: string } | null | undefined) => !!p?.from && !!activeRef.current?.roster.some(r => r.id === p.from);
 
   /* ---------- presencia ---------- */
-  const track = useCallback((patch: Partial<Player>, force = false) => {
-    if (!meRef.current || !chRef.current) return;
-    meRef.current = { ...meRef.current, ...patch };
-    const send = () => { trailing.current = null; lastTrack.current = Date.now(); chRef.current?.track(meRef.current!); };
-    const wait = 500 - (Date.now() - lastTrack.current); // máximo ~2 por segundo (Supabase limita a 10 mensajes/s por jugador)
-    if (force || wait <= 0) { if (trailing.current) clearTimeout(trailing.current); send(); return; }
-    if (!trailing.current) trailing.current = window.setTimeout(send, wait);
+  // la lista de jugadores sale de RoomMembers (presencia + estados + margen de 5 s)
+  const refresh = useCallback(() => {
+    const list = membersRef.current.list();
+    if (sameMembers(list, playersRef.current)) return;
+    playersRef.current = list; setPlayers(list);
   }, []);
+  const sendSt = useCallback(() => {
+    if (stTrailing.current) { clearTimeout(stTrailing.current); stTrailing.current = null; }
+    lastSt.current = Date.now();
+    chRef.current?.send({ type: 'broadcast', event: 'st', payload: meRef.current });
+  }, []);
+  const track = useCallback((patch: Partial<Player>, force = false) => {
+    if (!meRef.current) return;
+    meRef.current = { ...meRef.current, ...patch, v: (meRef.current.v || 0) + 1 };
+    membersRef.current.state(meRef.current); refresh();
+    if (!chRef.current) return;
+    // nombre, color o configuración: a la presencia (máximo ~2 por segundo)
+    if ('name' in patch || 'color' in patch || 'cfg' in patch) {
+      const pres = () => { trailing.current = null; lastTrack.current = Date.now(); chRef.current?.track(meRef.current!); };
+      const wait = 500 - (Date.now() - lastTrack.current);
+      if (force || wait <= 0) { if (trailing.current) clearTimeout(trailing.current); pres(); }
+      else if (!trailing.current) trailing.current = window.setTimeout(pres, wait);
+    }
+    // el estado de juego va siempre por broadcast (máximo ~3 por segundo, siempre llega el último)
+    const wait = 300 - (Date.now() - lastSt.current);
+    if (force || wait <= 0) sendSt();
+    else if (!stTrailing.current) stTrailing.current = window.setTimeout(sendSt, wait);
+  }, [refresh, sendSt]);
 
   const host = players[0];
   const me = players.find(p => p.id === meRef.current?.id);
@@ -194,9 +220,10 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       const ch = sb.channel(`room-${code}`, { config: { presence: { key: meRef.current.id }, broadcast: { self: true } } });
       chRef.current = ch;
       ch.on('presence', { event: 'sync' }, () => {
-        const st = ch.presenceState() as Record<string, Player[]>;
-        const list = Object.values(st).map(a => a[0]).filter(Boolean).sort((a, b) => a.joinedAt - b.joinedAt);
-        playersRef.current = list; setPlayers(list);
+        membersRef.current.presence(newestMetas(ch.presenceState() as Record<string, Player[]>));
+        if (meRef.current) membersRef.current.state(meRef.current);
+        refresh();
+        const list = playersRef.current;
         const h = list[0]; if (h?.cfg?.tok) inheritedTok.current = h.cfg.tok;
         // si el anfitrión de la ronda se fue de verdad (más de 6 s), lo hereda el siguiente de la lista
         const rh = roundHostRef.current;
@@ -207,6 +234,10 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
         // colores únicos: si alguien que llegó antes tiene el mío (o no tengo), tomo el primero libre
         const next = resolveColor(meRef.current!, list, PLAYER_COLORS);
         if (next) track({ color: next }, true);
+      });
+      ch.on('broadcast', { event: 'st' }, ({ payload }) => {
+        if (!payload || typeof payload.id !== 'string' || typeof payload.joinedAt !== 'number' || payload.id === meRef.current?.id) return;
+        membersRef.current.state(payload as Player); refresh();
       });
       ch.on('broadcast', { event: 'start' }, ({ payload }) => { if (fromHost(payload)) begin(payload as StartPayload); });
       ch.on('broadcast', { event: 'garbage' }, ({ payload }) => { if (payload.to === meRef.current?.id && fromRoster(payload)) gameRef.current?.receiveGarbage?.(clampGarbage(payload.n)); });
@@ -221,7 +252,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       });
       ch.on('broadcast', { event: 'end' }, ({ payload }) => { if (fromHost(payload)) finish(payload); });
       ch.subscribe(status => {
-        if (status === 'SUBSCRIBED') { setError(''); ch.track(meRef.current!); return; }
+        if (status === 'SUBSCRIBED') { setError(''); ch.track(meRef.current!); sendSt(); return; }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           if (cancelled || chRef.current !== ch) return; // cierre nuestro (al salir o al reconectar)
           setError('Se cortó la conexión con la sala. Reconectando…');
@@ -240,6 +271,12 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       if (!ch || ch.state !== 'joined') { if (ch) { chRef.current = null; sb.removeChannel(ch); } if (retry) clearTimeout(retry); connect(); }
     };
     document.addEventListener('visibilitychange', onVisible);
+    const beat = window.setInterval(() => {
+      if (!meRef.current) return;
+      membersRef.current.state(meRef.current);
+      if (chRef.current?.state === 'joined' && Date.now() - lastSt.current > 1500) sendSt();
+      refresh();
+    }, 1000);
 
     import('@/lib/tecla/history').then(({ History }) => {
       if (cancelled) return;
@@ -253,15 +290,17 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       cancelled = true;
       if (retry) clearTimeout(retry);
       document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(beat);
       gameRef.current?.destroy?.(); stopRoyale();
       if (trailing.current) clearTimeout(trailing.current);
+      if (stTrailing.current) clearTimeout(stTrailing.current);
       const wasHost = playersRef.current[0]?.id === meRef.current?.id;
       if (wasHost && playersRef.current.length <= 1) closeRoom(code, roomToken(code, inheritedTok.current));
       const ch = chRef.current; chRef.current = null;
       if (ch) sb.removeChannel(ch);
       import('@/lib/tecla/input').then(m => m.setConsumer(null));
     };
-  }, [code, begin, finish, initialGame, initialPublic, track]);
+  }, [code, begin, finish, initialGame, initialPublic, track, refresh, sendSt]);
 
   /* ---------- el anfitrión publica la sala (para la lista de salas públicas) ---------- */
   useEffect(() => {
@@ -305,6 +344,12 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     }, 200);
     return () => clearInterval(iv);
   }, [amRoundHost, phase, active]);
+
+  useEffect(() => {
+    if (!amRoundHost || phase !== 'playing' || active?.game !== 'torre') return;
+    const inRoster = new Set(active.roster.map(r => r.id));
+    gameRef.current?.setActivePlayers?.(players.filter(p => inRoster.has(p.id)).map(p => p.id));
+  }, [amRoundHost, phase, active, players]);
 
   /* ---------- acciones ---------- */
   const setCfg = (patch: Partial<Cfg>) => {

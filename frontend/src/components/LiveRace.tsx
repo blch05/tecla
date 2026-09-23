@@ -1,15 +1,17 @@
 'use client';
 
 /* Carrera en vivo entre personas: una sala por link, sincronizada con Supabase Realtime.
-   - presencia: quién está en la sala, su nombre y su progreso
+   - presencia: quién está en la sala y su nombre
+   - broadcast "st": el progreso de cada uno, con versión (ver roomSync); un corte breve no lo saca de la carrera
    - broadcast "start": el anfitrión arranca la ronda con una semilla (mismo texto para todos) */
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
 import { closeRoom, publishRoom, roomToken, seatId } from '@/lib/rooms';
+import { newestMetas, RoomMembers, sameMembers } from '@/lib/roomSync';
 
-interface Racer { id: string; name: string; joinedAt: number; round: number; progress: number; wpm: number; done: boolean; finishMs: number | null; pub?: boolean; tok?: string }
+interface Racer { id: string; name: string; joinedAt: number; round: number; progress: number; wpm: number; done: boolean; finishMs: number | null; pub?: boolean; tok?: string; v?: number }
 type Phase = 'lobby' | 'countdown' | 'racing' | 'done';
 
 const guestId = () => {
@@ -40,15 +42,36 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
   const [myResult, setMyResult] = useState<{ place: number; wpm: number; acc: number } | null>(null);
 
   const trailing = useRef<number | null>(null);
-  const track = useCallback((patch: Partial<Racer>, force = false) => {
-    if (!meRef.current || !chRef.current) return;
-    meRef.current = { ...meRef.current, ...patch };
-    const send = () => { trailing.current = null; lastTrack.current = Date.now(); chRef.current?.track(meRef.current!); };
-    const wait = 400 - (Date.now() - lastTrack.current); // Supabase limita a 10 mensajes/s por jugador
-    if (force || wait <= 0) { if (trailing.current) clearTimeout(trailing.current); send(); return; }
-    // no saturar el canal, pero siempre mandar el último estado (antes se perdía y la barra quedaba trabada)
-    if (!trailing.current) trailing.current = window.setTimeout(send, wait);
+  const membersRef = useRef(new RoomMembers<Racer>(5000));
+  const lastSt = useRef(0);
+  const stTrailing = useRef<number | null>(null);
+  const refresh = useCallback(() => {
+    const list = membersRef.current.list();
+    if (sameMembers(list, racersRef.current)) return;
+    racersRef.current = list; setRacers(list);
   }, []);
+  const sendSt = useCallback(() => {
+    if (stTrailing.current) { clearTimeout(stTrailing.current); stTrailing.current = null; }
+    lastSt.current = Date.now();
+    chRef.current?.send({ type: 'broadcast', event: 'st', payload: meRef.current });
+  }, []);
+  const track = useCallback((patch: Partial<Racer>, force = false) => {
+    if (!meRef.current) return;
+    meRef.current = { ...meRef.current, ...patch, v: (meRef.current.v || 0) + 1 };
+    membersRef.current.state(meRef.current); refresh();
+    if (!chRef.current) return;
+    // nombre y visibilidad: a la presencia
+    if ('name' in patch || 'pub' in patch || 'tok' in patch) {
+      const pres = () => { trailing.current = null; lastTrack.current = Date.now(); chRef.current?.track(meRef.current!); };
+      const wait = 500 - (Date.now() - lastTrack.current);
+      if (force || wait <= 0) { if (trailing.current) clearTimeout(trailing.current); pres(); }
+      else if (!trailing.current) trailing.current = window.setTimeout(pres, wait);
+    }
+    // el progreso va por broadcast: más liviano, y siempre llega el último valor
+    const wait = 250 - (Date.now() - lastSt.current);
+    if (force || wait <= 0) sendSt();
+    else if (!stTrailing.current) stTrailing.current = window.setTimeout(sendSt, wait);
+  }, [refresh, sendSt]);
 
   // arranca una ronda: mismo texto para todos a partir de la semilla
   const begin = useCallback(async (seed: number, r: number) => {
@@ -72,9 +95,9 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
           track({ progress: 1, wpm: Math.round(s.wpm), done: true, finishMs }, true);
           setPhase('done');
           // puesto = cuántos terminaron antes que yo en esta ronda + 1
-          const chState = chRef.current?.presenceState() as Record<string, Racer[]> | undefined;
-          const others = Object.values(chState || {}).map(a => a[0]).filter(x => x && x.id !== meRef.current?.id && x.round === r && x.done && x.finishMs != null && x.finishMs < finishMs);
-          const place = others.length + 1, total = Object.values(chState || {}).filter(a => a[0]?.round === r).length || 1;
+          const inRound = racersRef.current.filter(x => x.round === r);
+          const others = inRound.filter(x => x.id !== meRef.current?.id && x.done && x.finishMs != null && x.finishMs < finishMs);
+          const place = others.length + 1, total = inRound.length || 1;
           setMyResult({ place, wpm: s.wpm, acc: s.acc });
           History.record({ t: 'comp', mode: 'carrera en vivo', win: place === 1 && total > 1, detail: `${place}º de ${total} · ${Math.round(s.wpm)} ppm · sala ${code}`, pts: total > 1 ? [200, 120, 70, 40][place - 1] || 20 : 20 });
         },
@@ -98,14 +121,18 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
       const ch = sb.channel(`race-${code}`, { config: { presence: { key: meRef.current.id }, broadcast: { self: true } } });
       chRef.current = ch;
       ch.on('presence', { event: 'sync' }, () => {
-        const st = ch.presenceState() as Record<string, Racer[]>;
-        const list = Object.values(st).map(a => a[0]).filter(Boolean).sort((a, b) => a.joinedAt - b.joinedAt);
-        racersRef.current = list; setRacers(list);
+        membersRef.current.presence(newestMetas(ch.presenceState() as Record<string, Racer[]>));
+        if (meRef.current) membersRef.current.state(meRef.current);
+        refresh();
+      });
+      ch.on('broadcast', { event: 'st' }, ({ payload }) => {
+        if (!payload || typeof payload.id !== 'string' || typeof payload.joinedAt !== 'number' || payload.id === meRef.current?.id) return;
+        membersRef.current.state(payload as Racer); refresh();
       });
       // solo el anfitrión (el primero que entró) puede arrancar la carrera
       ch.on('broadcast', { event: 'start' }, ({ payload }) => { if (payload?.from && payload.from === racersRef.current[0]?.id) begin(payload.seed, payload.round); });
       ch.subscribe(status => {
-        if (status === 'SUBSCRIBED') { setError(''); ch.track(meRef.current!); return; }
+        if (status === 'SUBSCRIBED') { setError(''); ch.track(meRef.current!); sendSt(); return; }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           if (cancelled || chRef.current !== ch) return;
           setError('Se cortó la conexión con la sala. Reconectando…');
@@ -122,6 +149,13 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
       if (!ch || ch.state !== 'joined') { if (ch) { chRef.current = null; sb.removeChannel(ch); } if (retry) clearTimeout(retry); connect(); }
     };
     document.addEventListener('visibilitychange', onVisible);
+    // latido: mantiene vivo mi estado en los demás y limpia a los que se fueron de verdad
+    const beat = window.setInterval(() => {
+      if (!meRef.current) return;
+      membersRef.current.state(meRef.current);
+      if (chRef.current?.state === 'joined' && Date.now() - lastSt.current > 1500) sendSt();
+      refresh();
+    }, 1000);
 
     import('@/lib/tecla/history').then(({ History }) => {
       if (cancelled) return;
@@ -135,14 +169,16 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
       cancelled = true;
       if (retry) clearTimeout(retry);
       document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(beat);
       tbRef.current?.stop();
       if (trailing.current) clearTimeout(trailing.current);
+      if (stTrailing.current) clearTimeout(stTrailing.current);
       if (racersRef.current[0]?.id === meRef.current?.id && racersRef.current.length <= 1) closeRoom(code, roomToken(code, racersRef.current[0]?.tok));
       const ch = chRef.current; chRef.current = null;
       if (ch) sb.removeChannel(ch);
       import('@/lib/tecla/input').then(m => m.setConsumer(null));
     };
-  }, [code, begin, initialPublic]);
+  }, [code, begin, initialPublic, refresh, sendSt]);
 
   const host = racers[0];
   const isHost = !!host && host.id === meRef.current?.id;
