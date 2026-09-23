@@ -1,0 +1,14 @@
+{
+  "name": "tecla-backend",
+  "private": true,
+  "scripts": {
+    "login": "supabase login",
+    "link": "supabase link",
+    "db:push": "supabase db push",
+    "db:local": "supabase start",
+    "types": "supabase gen types typescript --linked > ../frontend/src/lib/supabase/database.types.ts"
+  },
+  "devDependencies": {
+    "supabase": "^2.40.0"
+  }
+}

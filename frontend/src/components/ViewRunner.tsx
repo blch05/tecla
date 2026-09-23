@@ -1,0 +1,32 @@
+'use client';
+
+import { useEffect } from 'react';
+
+type ViewName = 'test' | 'comp' | 'arcade' | 'study' | 'stats' | 'profile';
+
+interface View { init?: () => void; enter?: () => void; leave?: () => void }
+
+// cada vista es un módulo imperativo (DOM + canvas) que se monta sobre el markup de su página
+const loaders: Record<ViewName, () => Promise<View>> = {
+  test: () => import('@/lib/tecla/views/test').then(m => m.Test),
+  comp: () => import('@/lib/tecla/views/compete').then(m => m.Comp),
+  arcade: () => import('@/lib/tecla/views/arcade').then(m => m.Arc),
+  study: () => import('@/lib/tecla/views/study').then(m => m.Study),
+  stats: () => import('@/lib/tecla/views/stats').then(m => m.Stats),
+  profile: () => import('@/lib/tecla/views/profile').then(m => m.ProfileView),
+};
+
+export default function ViewRunner({ view }: { view: ViewName }) {
+  useEffect(() => {
+    let active: View | null = null;
+    let cancelled = false;
+    loaders[view]().then(v => {
+      if (cancelled) return;
+      active = v;
+      v.init?.();
+      v.enter?.();
+    });
+    return () => { cancelled = true; active?.leave?.(); };
+  }, [view]);
+  return null;
+}
