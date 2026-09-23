@@ -5,7 +5,10 @@ supabase/
 ├── config.toml                           configuración para desarrollo local
 ├── migrations/20260923120000_init.sql    esquema inicial
 ├── migrations/20260923180000_social.sql  usuarios, perfiles públicos y rankings
-└── seed.sql
+├── migrations/20260923220000_rooms.sql   salas online: públicas y privadas
+├── migrations/20260924100000_hardening.sql refuerzos de seguridad
+├── seed.sql
+└── tests/                               tests de la base con pgTAP (database, rooms)
 ```
 
 ## Qué hay en la base
@@ -21,6 +24,10 @@ supabase/
 | `runs.mode_key` | modo del test (t15, t30, w25…) para los rankings | — |
 | `public_profile(usuario)` | datos agregados del perfil público (nunca el historial completo) | todos |
 | `leaderboard(tabla, período)` | rankings globales por modo o por puntos: hoy, semana, siempre | todos |
+| `rooms` | salas online abiertas (juego, dificultad, pública/privada, jugadores) | solo por funciones |
+| `upsert_room` / `close_room` | el anfitrión registra y cierra su sala (con un token secreto) | cualquiera con el token |
+| `list_rooms()` | salas públicas con actividad reciente | todos |
+| `find_room(código)` | a qué juego pertenece un código (sirve para salas privadas) | todos |
 
 Todas las tablas tienen Row Level Security activado.
 
@@ -39,6 +46,11 @@ npm run types                 # genera los tipos TypeScript para el frontend
 ```
 
 **Local con Docker:** `npm run db:local` levanta Supabase completo en tu compu.
+
+## Tests
+
+- `npm run test:live`: corre contra tu proyecto real como usuario sin sesión (permisos, validaciones y entradas raras). Las salas de prueba se borran solas.
+- `npm run test:db`: tests pgTAP de `supabase/tests/`, incluidos los casos con usuarios logueados. Necesita Docker y `npx supabase start`.
 
 ## Próximos pasos
 

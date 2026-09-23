@@ -7,8 +7,9 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
+import { closeRoom, publishRoom, roomToken } from '@/lib/rooms';
 
-interface Racer { id: string; name: string; joinedAt: number; round: number; progress: number; wpm: number; done: boolean; finishMs: number | null }
+interface Racer { id: string; name: string; joinedAt: number; round: number; progress: number; wpm: number; done: boolean; finishMs: number | null; pub?: boolean; tok?: string }
 type Phase = 'lobby' | 'countdown' | 'racing' | 'done';
 
 const guestId = () => {
@@ -22,12 +23,13 @@ const guestNick = () => {
   try { return localStorage.getItem('tecla:nick') || 'invitado-' + Math.floor(Math.random() * 900 + 100); } catch { return 'invitado'; }
 };
 
-export default function LiveRace({ code }: { code: string }) {
+export default function LiveRace({ code, initialPublic = true }: { code: string; initialPublic?: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const chRef = useRef<RealtimeChannel | null>(null);
   const meRef = useRef<Racer | null>(null);
   const tbRef = useRef<any>(null);
   const lastTrack = useRef(0);
+  const racersRef = useRef<Racer[]>([]);
   const [racers, setRacers] = useState<Racer[]>([]);
   const [phase, setPhase] = useState<Phase>('lobby');
   const [round, setRound] = useState(0);
@@ -37,13 +39,15 @@ export default function LiveRace({ code }: { code: string }) {
   const [error, setError] = useState('');
   const [myResult, setMyResult] = useState<{ place: number; wpm: number; acc: number } | null>(null);
 
+  const trailing = useRef<number | null>(null);
   const track = useCallback((patch: Partial<Racer>, force = false) => {
     if (!meRef.current || !chRef.current) return;
     meRef.current = { ...meRef.current, ...patch };
-    const now = Date.now();
-    if (!force && now - lastTrack.current < 200) return; // no saturar el canal
-    lastTrack.current = now;
-    chRef.current.track(meRef.current);
+    const send = () => { trailing.current = null; lastTrack.current = Date.now(); chRef.current?.track(meRef.current!); };
+    const wait = 200 - (Date.now() - lastTrack.current);
+    if (force || wait <= 0) { if (trailing.current) clearTimeout(trailing.current); send(); return; }
+    // no saturar el canal, pero siempre mandar el último estado (antes se perdía y la barra quedaba trabada)
+    if (!trailing.current) trailing.current = window.setTimeout(send, wait);
   }, []);
 
   // arranca una ronda: mismo texto para todos a partir de la semilla
@@ -91,14 +95,16 @@ export default function LiveRace({ code }: { code: string }) {
       const id = History.user?.id || guestId();
       const nick = History.user?.name || guestNick();
       setName(nick);
-      meRef.current = { id, name: nick, joinedAt: Date.now(), round: 0, progress: 0, wpm: 0, done: false, finishMs: null };
+      meRef.current = { id, name: nick, joinedAt: Date.now(), round: 0, progress: 0, wpm: 0, done: false, finishMs: null, pub: initialPublic };
       const ch = sb.channel(`race-${code}`, { config: { presence: { key: id }, broadcast: { self: true } } });
       chRef.current = ch;
       ch.on('presence', { event: 'sync' }, () => {
         const st = ch.presenceState() as Record<string, Racer[]>;
-        setRacers(Object.values(st).map(a => a[0]).filter(Boolean).sort((a, b) => a.joinedAt - b.joinedAt));
+        const list = Object.values(st).map(a => a[0]).filter(Boolean).sort((a, b) => a.joinedAt - b.joinedAt);
+        racersRef.current = list; setRacers(list);
       });
-      ch.on('broadcast', { event: 'start' }, ({ payload }) => begin(payload.seed, payload.round));
+      // solo el anfitrión (el primero que entró) puede arrancar la carrera
+      ch.on('broadcast', { event: 'start' }, ({ payload }) => { if (payload?.from && payload.from === racersRef.current[0]?.id) begin(payload.seed, payload.round); });
       ch.subscribe(status => {
         if (status === 'SUBSCRIBED') ch.track(meRef.current!);
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setError('No se pudo conectar a la sala. Probá recargar la página.');
@@ -107,18 +113,31 @@ export default function LiveRace({ code }: { code: string }) {
     return () => {
       cancelled = true;
       tbRef.current?.stop();
+      if (trailing.current) clearTimeout(trailing.current);
+      if (racersRef.current[0]?.id === meRef.current?.id && racersRef.current.length <= 1) closeRoom(code, roomToken(code, racersRef.current[0]?.tok));
       if (chRef.current) sb.removeChannel(chRef.current);
       import('@/lib/tecla/input').then(m => m.setConsumer(null));
     };
-  }, [code, begin]);
+  }, [code, begin, initialPublic]);
 
   const host = racers[0];
   const isHost = !!host && host.id === meRef.current?.id;
+  const pub = host?.pub ?? initialPublic;
+
+  // el anfitrión registra la sala para que las públicas aparezcan en la lista
+  useEffect(() => {
+    if (!isHost || !meRef.current) return;
+    const tok = roomToken(code, host?.tok);
+    if (meRef.current.tok !== tok) track({ tok }, true);
+    const send = () => publishRoom({ code, token: tok, game: 'carrera', difficulty: null, isPublic: pub, hostName: meRef.current?.name || 'anfitrión', players: racersRef.current.length, status: phase === 'lobby' ? 'lobby' : 'playing' });
+    send(); const iv = setInterval(send, 20000);
+    return () => clearInterval(iv);
+  }, [isHost, code, pub, phase, racers.length, host?.tok, track]);
   const current = useMemo(() => racers.filter(r => r.round === round), [racers, round]);
   const allDone = phase !== 'lobby' && current.length > 0 && current.every(r => r.done);
 
   const start = () => {
-    chRef.current?.send({ type: 'broadcast', event: 'start', payload: { seed: Math.floor(Math.random() * 2 ** 31), round: round + 1 } });
+    chRef.current?.send({ type: 'broadcast', event: 'start', payload: { seed: Math.floor(Math.random() * 2 ** 31), round: round + 1, from: meRef.current?.id } });
   };
   const rename = (v: string) => {
     const nick = v.slice(0, 24) || 'invitado';
@@ -137,7 +156,7 @@ export default function LiveRace({ code }: { code: string }) {
       <div className="panel live-panel">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div>
-            <span className="eyebrow">* — carrera en vivo · sala {code}</span>
+            <span className="eyebrow">* — carrera en vivo · sala {code} · <span className={'room-badge ' + (pub ? 'pub' : 'priv')}>{pub ? 'pública' : 'privada'}</span></span>
             <h2 className="live-title">{phase === 'lobby' ? 'esperando jugadores' : phase === 'countdown' ? 'preparados…' : phase === 'racing' ? '¡a tipear!' : allDone ? 'ronda terminada' : 'esperando a los demás'}</h2>
           </div>
           <div className="row">
@@ -165,6 +184,12 @@ export default function LiveRace({ code }: { code: string }) {
           <div className="live-lobby">
             <label className="lbl" htmlFor="live-nick">tu nombre en la sala</label>
             <input id="live-nick" className="live-nick" value={name} onChange={e => rename(e.target.value)} maxLength={24} />
+            {isHost && (
+              <div className="cfgbar" style={{ alignSelf: 'flex-start' }}>
+                <button type="button" className={'opt' + (pub ? ' on' : '')} onClick={() => track({ pub: true }, true)}>pública · aparece en la lista</button>
+                <button type="button" className={'opt' + (!pub ? ' on' : '')} onClick={() => track({ pub: false }, true)}>privada · solo con el link</button>
+              </div>
+            )}
             {isHost
               ? <button className="btn primary" type="button" onClick={start} disabled={racers.length < 1}>{racers.length < 2 ? 'empezar solo (o esperá a alguien)' : `empezar con ${racers.length} jugadores`}</button>
               : <p className="hint">El anfitrión ({host?.name || '…'}) arranca la carrera.</p>}

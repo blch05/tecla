@@ -7,6 +7,7 @@ npm install
 npm run dev        # http://localhost:3000
 npm run build      # build de producción (incluye chequeo de tipos)
 npm run typecheck
+npm test           # tests con Vitest (carpeta tests/)
 ```
 
 ## Estructura
@@ -15,11 +16,12 @@ npm run typecheck
 src/
 ├── app/                  rutas: / /test /competir /arcade /estudiar /ranking /progreso /perfil /login
 │                         /u/[usuario] (perfil público) · /carrera/[código] (carrera en vivo)
+│                         /sala/[código]?juego=… (arcade multijugador y battle royale online)
 ├── components/
 │   ├── AppShell.tsx      input oculto del teclado, avisos, decoración, guardado al cerrar
 │   ├── Header.tsx        navegación y usuario
 │   ├── ViewRunner.tsx    monta cada vista imperativa sobre el markup de su página
-│   ├── Landing, Ranking, PublicProfile, LiveRace, ArcadeStage, ThemeSwitcher
+│   ├── Landing, Ranking, PublicProfile, LiveRace, GameRoom, RoomBrowser, ArcadeStage, ThemeSwitcher
 │   └── bits/             componentes de React Bits adaptados (ver bits/README.md)
 └── lib/
     ├── supabase/client.ts

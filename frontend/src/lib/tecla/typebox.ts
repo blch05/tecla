@@ -60,7 +60,8 @@ export class TypeBox {
     const off = Math.max(0, this.wordEls[this.wi].offsetTop - (this.lineH || 40));
     this.inner.style.transform = `translateY(${-off}px)`;
   }
-  begin() { this.t0 = now(); this.o.onStart && this.o.onStart(); this.timer = setInterval(() => this.tick(), 100); }
+  // t0 también funciona como marca de "ya empezó" (acá y en las vistas): nunca puede valer 0
+  begin() { this.t0 = Math.max(now(), 1e-3); this.o.onStart && this.o.onStart(); this.timer = setInterval(() => this.tick(), 100); }
   pulse() { this.root.classList.add('typing'); clearTimeout(this.pt); this.pt = setTimeout(() => this.root.classList.remove('typing'), 700); }
   log() { this.tl.push([Math.round(now() - this.t0), this.wi, (this.typed[this.wi] || '').length]); }
   char(c) {

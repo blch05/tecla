@@ -6,7 +6,9 @@
     "link": "supabase link",
     "db:push": "supabase db push",
     "db:local": "supabase start",
-    "types": "supabase gen types typescript --linked > ../frontend/src/lib/supabase/database.types.ts"
+    "types": "supabase gen types typescript --linked > ../frontend/src/lib/supabase/database.types.ts",
+    "test:live": "node --test tests/live.test.mjs",
+    "test:db": "supabase test db"
   },
   "devDependencies": {
     "supabase": "^2.40.0"

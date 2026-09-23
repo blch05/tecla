@@ -27,3 +27,11 @@ Abrí http://localhost:3000. Sin configurar nada, la app funciona completa y gua
 5. Reiniciá `npm run dev`. Ya podés entrar desde **perfil → entrar**.
 
 Login con Google (opcional): **Authentication → Providers → Google**, con un Client ID y Secret de Google Cloud Console.
+
+## Tests
+
+```bash
+cd frontend && npm test          # lógica del frontend (Vitest): motor de tipeo, vocabularios, historial, salas, apuntes
+cd backend && npm run test:live  # contra tu proyecto de Supabase, sin sesión: permisos y validaciones
+cd backend && npm run test:db    # base completa con usuarios logueados (pgTAP); necesita Docker y `npx supabase start`
+```
