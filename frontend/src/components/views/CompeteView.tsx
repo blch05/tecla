@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Tabs from '@/components/ui/Tabs';
+import PageHeader from '@/components/ui/PageHeader';
 import RoomBrowser from '@/components/RoomBrowser';
 import { useKeys } from '@/lib/useKeys';
 import type { EndResult } from '@/lib/compete/modes';
@@ -55,7 +56,9 @@ export default function CompeteView() {
   if (!modes || !mode) return null;
   return (
     <>
-      <div className="subtabs"><Tabs items={modes.map(m => ({ id: m.id, label: m.name }))} value={cur} onChange={pick} label="modos de competir" /></div>
+      <PageHeader eyebrow="* — contra bots o personas" title="competir">
+        <Tabs items={modes.map(m => ({ id: m.id, label: m.name }))} value={cur} onChange={pick} label="modos de competir" />
+      </PageHeader>
       <div className="panel" id="comp-area">
         {phase === 'pre'
           ? <PreStart mode={mode} onStart={start} go={p => router.push(p)} store={store.current} />

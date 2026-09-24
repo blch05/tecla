@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CountUp from '@/components/bits/CountUp';
 import ShinyText from '@/components/bits/ShinyText';
 import DomNode from '@/components/ui/DomNode';
+import PageHeader from '@/components/ui/PageHeader';
 
 type Mode = 'time' | 'words';
 type Sound = 'off' | 'mecanico' | 'suave' | 'maquina';
@@ -145,6 +146,7 @@ export default function TestView() {
 
   return (
     <>
+      <PageHeader eyebrow="* — tipeo" title="test">
       {cfg && (
         <div className="cfgbar">
           <div className="grp">
@@ -169,6 +171,9 @@ export default function TestView() {
         </div>
       )}
 
+      </PageHeader>
+
+      <div className="page-body center">
       <div className="typing-wrap" hidden={!!res}>
         <div className="live"><span>{live.count}</span><span className="sm">{live.wpm}</span><span className="gh">{live.ghost}</span></div>
         <div ref={boxRef} />
@@ -211,6 +216,7 @@ export default function TestView() {
           </div>
         </div>
       )}
+      </div>
     </>
   );
 }

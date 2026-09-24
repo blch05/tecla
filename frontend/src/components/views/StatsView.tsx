@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Tabs from '@/components/ui/Tabs';
 import DomNode from '@/components/ui/DomNode';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface Mods {
   store: any; avg: (a: number[]) => number; baseKey: (k: string) => string;
@@ -66,6 +67,9 @@ export default function StatsView() {
 
   return (
     <>
+      <PageHeader eyebrow="* — tus tests" title="progreso">
+        <button className="btn ghost" type="button" onClick={reset}>{sure ? '¿seguro? tocá de nuevo para borrar todo' : 'borrar mi progreso'}</button>
+      </PageHeader>
       <div className="tiles">
         {[
           ['tests', String(hist.length), ''],
@@ -80,9 +84,6 @@ export default function StatsView() {
           <span className="eyebrow">progreso · ppm por test</span>
           <div style={{ marginTop: 10 }}><DomNode node={chart} /></div>
           <p className="sub" style={{ marginTop: 8, fontSize: 13.5 }}>{projection(recent.map(x => x.wpm))}</p>
-          <div className="row" style={{ justifyContent: 'flex-end', marginTop: 'auto' }}>
-            <button className="btn ghost" type="button" onClick={reset}>{sure ? '¿seguro? tocá de nuevo para borrar todo' : 'borrar mi progreso'}</button>
-          </div>
         </div>
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <span className="corner">| * |</span>

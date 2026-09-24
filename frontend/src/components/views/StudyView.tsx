@@ -5,6 +5,7 @@
    (los aciertos se guardan en el historial al cambiar de modo, de documento o al salir). */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Tabs from '@/components/ui/Tabs';
+import PageHeader from '@/components/ui/PageHeader';
 import { CopyMode, DictadoMode, FlashMode, HuecosMode, ResumenMode, type ModeProps } from './study/modes';
 import { pdfText, processDoc, type StudyDoc } from '@/lib/study/doc';
 import { SAMPLE_DOC } from '@/lib/tecla/data/words';
@@ -74,6 +75,9 @@ export default function StudyView() {
   const d = doc?.d, M = MODES.find(m => m.id === mode) || MODES[1];
   return (
     <>
+      <PageHeader eyebrow="* — con tu material" title="estudiar">
+        {!pasting && d && <Tabs items={MODES.map(m => ({ id: m.id, label: m.name }))} value={mode} onChange={pick} label="modos de estudio" />}
+      </PageHeader>
       <div className="panel src">
         <span className="corner" aria-hidden="true">* — |</span>
         <div className="src-head">
@@ -101,7 +105,6 @@ export default function StudyView() {
       </div>
       {!pasting && d && (
         <>
-          <div className="subtabs"><Tabs items={MODES.map(m => ({ id: m.id, label: m.name }))} value={mode} onChange={pick} label="modos de estudio" /></div>
           <div className="panel" id="study-area">
             <M.C key={mode + ':' + round} doc={d} name={M.name} desc={M.desc} hit={hit} again={() => { flush(); setRound(r => r + 1); }} />
           </div>

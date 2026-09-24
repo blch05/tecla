@@ -4,6 +4,7 @@
    El juego en sí (Arcade, lib/tecla/views/arcade.ts) sigue dibujando en el canvas. */
 import { useEffect, useRef, useState } from 'react';
 import Tabs from '@/components/ui/Tabs';
+import PageHeader from '@/components/ui/PageHeader';
 import ArcadeStage from '@/components/ArcadeStage';
 import ArcadeOverlay, { type OverlaySpec } from './arcade/ArcadeOverlay';
 import { gameTabs } from '@/lib/games';
@@ -55,8 +56,10 @@ export default function ArcadeView() {
   const diff = game?.diffKey?.() || 'medio', D = mods?.ADIFF[diff];
   return (
     <>
+      <PageHeader eyebrow="* — minijuegos" title="arcade">
+        <Tabs variant="card" items={gameTabs(KINDS, false)} value={kind} onChange={pickGame} label="juegos del arcade" />
+      </PageHeader>
       <div className="arc-top">
-        <div className="subtabs"><Tabs variant="card" items={gameTabs(KINDS, false)} value={kind} onChange={pickGame} label="juegos del arcade" /></div>
         {mods && game && (
           <div className="diffbar">
             <div className="cfgbar">
@@ -66,7 +69,6 @@ export default function ArcadeView() {
             <span className="hint">{mods.DIFF_DESC[kind]?.[diff]} · puntos ×{String(D?.pts).replace('.', ',')} · récord {mods.store.get(game.bestKey(), 0)}</span>
           </div>
         )}
-      </div>
       <div className="hud">
         <span>puntos <b>{hud?.score ?? 0}</b></span>
         <span>{hud?.levelLabel ?? 'nivel'} <b>{hud?.level ?? 1}</b></span>
@@ -76,6 +78,7 @@ export default function ArcadeView() {
         <span>precisión <b>{hud?.acc ?? '100%'}</b></span>
         <span>récord <b>{hud?.best ?? 0}</b></span>
         <button className="opt" type="button" onClick={toggleSound} disabled={!mods}>{sound ? '♪ sonido sí' : '♪ sonido no'}</button>
+      </div>
       </div>
       <ArcadeStage stageRef={stageRef}>
         <ArcadeOverlay game={game} spec={spec} />

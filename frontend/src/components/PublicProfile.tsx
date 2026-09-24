@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import PageHeader from '@/components/ui/PageHeader';
 import { useEffect, useState } from 'react';
 import CountUp from '@/components/bits/CountUp';
 import SpotlightCard from '@/components/bits/SpotlightCard';
@@ -55,6 +56,10 @@ export default function PublicProfile({ p }: { p: PublicProfileData }) {
 
   return (
     <section className="view pub">
+      <PageHeader eyebrow="* — perfil público" title={'@' + p.username}>
+        <button className="btn" type="button" onClick={share}>{copied ? 'link copiado' : 'compartir perfil'}</button>
+        {isMe ? <Link className="btn ghost" href="/perfil">editar</Link> : <Link className="btn ghost" href="/ranking">ver ranking</Link>}
+      </PageHeader>
       <div className="panel phead pub-head">
         <span className="corner" aria-hidden="true">* — |</span>
         <div className="avatar big-av">
@@ -66,10 +71,6 @@ export default function PublicProfile({ p }: { p: PublicProfileData }) {
           <h2>{name}</h2>
           <p className="sub">nivel {L.lv} · {fmt(p.points)} puntos</p>
           <div className="progress" style={{ maxWidth: 420 }}><i style={{ width: `${(L.pct * 100).toFixed(1)}%` }} /></div>
-        </div>
-        <div className="pside">
-          <button className="btn" type="button" onClick={share}>{copied ? 'link copiado' : 'compartir perfil'}</button>
-          {isMe ? <Link className="btn ghost" href="/perfil">editar</Link> : <Link className="btn ghost" href="/ranking">ver ranking</Link>}
         </div>
       </div>
 

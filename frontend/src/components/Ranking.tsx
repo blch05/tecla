@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import CountUp from '@/components/bits/CountUp';
-import SplitFlapText from '@/components/bits/SplitFlapText';
+import PageHeader from '@/components/ui/PageHeader';
 import { getSupabase } from '@/lib/supabase/client';
 import { fmt } from '@/lib/format';
 
@@ -57,14 +57,12 @@ export default function Ranking() {
 
   return (
     <section className="view ranking">
-      <div className="rk-top">
-        <SplitFlapText words={["RANKING"]} padTo={7} charset="alpha" fontSize={26} gap={4} tileRadius={6} flipDuration={70} stagger={60} loop={false}
-          tileColor="var(--soft)" textColor="var(--accent)" className="rk-flap" />
+      <PageHeader eyebrow="* — los mejores" title="ranking">
         <div className="rk-filters">
           <div className="cfgbar">{BOARDS.map(b => <button key={b.key} type="button" className={'opt' + (b.key === board ? ' on' : '')} onClick={() => setBoard(b.key)}>{b.label}</button>)}</div>
           <div className="cfgbar">{PERIODS.map(p => <button key={p.key} type="button" className={'opt' + (p.key === period ? ' on' : '')} onClick={() => setPeriod(p.key)}>{p.label}</button>)}</div>
         </div>
-      </div>
+      </PageHeader>
 
       {rows === null && <p className="hint">cargando…</p>}
       {error && <p className="hint">{error}</p>}

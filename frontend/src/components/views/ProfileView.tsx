@@ -8,6 +8,7 @@ import { useHistory } from '@/lib/useHistory';
 import { DIFF_NAMES, GAME_INFO, type Diff } from '@/lib/games';
 import type { RoomGame } from '@/lib/rooms';
 import Tabs from '@/components/ui/Tabs';
+import PageHeader from '@/components/ui/PageHeader';
 
 const KINDS = [{ id: 'all', label: 'todo' }, { id: 'test', label: 'tests' }, { id: 'arcade', label: 'arcade' }, { id: 'comp', label: 'competir' }, { id: 'study', label: 'estudiar' }];
 const GLYPH: Record<string, string> = { test: '|', arcade: '*', comp: '—', study: '/' };
@@ -50,6 +51,13 @@ export default function ProfileView() {
   const shown = list.slice(p * per, p * per + per);
 
   return (
+    <>
+    <PageHeader eyebrow="* — tu cuenta" title="perfil">
+      <span className={'chip sync' + (cloud ? ' ok' : '')}>{cloud ? (pend ? `guardando ${pend}…` : '* guardado en tu cuenta') : 'guardado solo en este navegador'}</span>
+      {me?.username && <Link className="btn ghost" href={'/u/' + me.username}>perfil público</Link>}
+      {cloud && <button className="btn ghost" type="button" onClick={() => setEditing(e => !e)}>{editing ? 'cerrar' : 'cambiar nombre'}</button>}
+      {cloud ? <button className="btn ghost" type="button" onClick={() => H.signOut()}>salir</button> : <Link className="btn primary" href="/login">entrar</Link>}
+    </PageHeader>
     <div className="two fill">
       <div className="col">
         <div className="panel phead">
@@ -63,14 +71,6 @@ export default function ProfileView() {
             <h2>{name}</h2>
             <p className="sub">nivel {L.lv} · {num(xp)} puntos · faltan {num(L.next)} para el nivel {L.lv + 1}</p>
             <div className="progress" style={{ maxWidth: 420 }}><i style={{ width: `${(L.pct * 100).toFixed(1)}%` }} /></div>
-          </div>
-          <div className="pside">
-            <span className={'chip sync' + (cloud ? ' ok' : '')}>{cloud ? (pend ? `guardando ${pend}…` : '* guardado en tu cuenta') : 'guardado solo en este navegador'}</span>
-            <div className="row">
-              {me?.username && <Link className="btn ghost" href={'/u/' + me.username}>perfil público</Link>}
-              {cloud && <button className="btn ghost" type="button" onClick={() => setEditing(e => !e)}>{editing ? 'cerrar' : 'cambiar nombre'}</button>}
-              {cloud ? <button className="btn ghost" type="button" onClick={() => H.signOut()}>salir</button> : <Link className="btn primary" href="/login">entrar</Link>}
-            </div>
           </div>
         </div>
 
@@ -134,6 +134,7 @@ export default function ProfileView() {
         )}
       </div>
     </div>
+    </>
   );
 }
 

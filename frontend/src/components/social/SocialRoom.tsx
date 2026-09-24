@@ -11,6 +11,7 @@ import { act as hostAct, canStart, type GS, newGame, publicView, ranking, tick }
 import { useRoom, type Member } from '@/lib/social/useRoom';
 import { OcultaGame, PistasGame, SopaGame, TuttiGame } from './SocialGames';
 import Tabs from '@/components/ui/Tabs';
+import PageHeader from '@/components/ui/PageHeader';
 import { GAME_INFO, gameTabs } from '@/lib/games';
 
 export const PLAYER_COLORS = ['#34A3F0', '#F0735F', '#1DB386', '#8A7BF4', '#F2B13C', '#E85D9E', '#14B8C4', '#6B7C8F'];
@@ -131,17 +132,11 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
 
   return (
     <section className="view social">
-      <header className="social-top">
-        <div className="social-title">
-          <span className="eyebrow">* — sala {code} · <span className={'room-badge ' + (cfg.pub ? 'pub' : 'priv')}>{cfg.pub ? 'pública' : 'privada'}</span>{cfg.spicy && <span className="spicy-badge">picante</span>}</span>
-          <h2 className="live-title">{info.name}{view && view.phase !== 'over' && <span className="social-round"> · ronda {view.round}/{view.rounds}</span>}</h2>
-        </div>
+      <PageHeader eyebrow={<>* — sala {code} · <span className={'room-badge ' + (cfg.pub ? 'pub' : 'priv')}>{cfg.pub ? 'pública' : 'privada'}</span>{cfg.spicy && <span className="spicy-badge">picante</span>}</>} title={<>{info.name}{view && view.phase !== 'over' && <span className="social-round"> · ronda {view.round}/{view.rounds}</span>}</>}>
         {view && view.phase !== 'over' && left != null && <div className={'social-timer' + (left <= 10 ? ' hot' : '')}>{left}s</div>}
-        <div className="row">
-          <button className="btn" type="button" onClick={copy}>{copied ? 'link copiado' : 'invitar'}</button>
-          <Link className="btn ghost" href="/competir">salir</Link>
-        </div>
-      </header>
+        <button className="btn" type="button" onClick={copy}>{copied ? 'link copiado' : 'invitar (copiar link)'}</button>
+        <Link className="btn ghost" href="/competir">salir</Link>
+      </PageHeader>
       {error && <p className="msg err">{error}</p>}
 
       <div className="social-body">

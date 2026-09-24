@@ -5,6 +5,7 @@
    - broadcast "st": el progreso de cada uno, con versión (ver roomSync); un corte breve no lo saca de la carrera
    - broadcast "start": el anfitrión arranca la ronda con una semilla (mismo texto para todos) */
 import Link from 'next/link';
+import PageHeader from '@/components/ui/PageHeader';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
@@ -213,17 +214,11 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
 
   return (
     <section className="view live">
+      <PageHeader eyebrow={<>* — sala {code} · <span className={'room-badge ' + (pub ? 'pub' : 'priv')}>{pub ? 'pública' : 'privada'}</span> · carrera en vivo</>} title={phase === 'lobby' ? 'esperando jugadores' : phase === 'countdown' ? 'preparados…' : phase === 'racing' ? '¡a tipear!' : allDone ? 'ronda terminada' : 'esperando a los demás'}>
+        <button className="btn" type="button" onClick={copy}>{copied ? 'link copiado' : 'invitar (copiar link)'}</button>
+        <Link className="btn ghost" href="/competir">salir</Link>
+      </PageHeader>
       <div className="panel live-panel">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div>
-            <span className="eyebrow">* — carrera en vivo · sala {code} · <span className={'room-badge ' + (pub ? 'pub' : 'priv')}>{pub ? 'pública' : 'privada'}</span></span>
-            <h2 className="live-title">{phase === 'lobby' ? 'esperando jugadores' : phase === 'countdown' ? 'preparados…' : phase === 'racing' ? '¡a tipear!' : allDone ? 'ronda terminada' : 'esperando a los demás'}</h2>
-          </div>
-          <div className="row">
-            <button className="btn" type="button" onClick={copy}>{copied ? 'link copiado' : 'invitar (copiar link)'}</button>
-            <Link className="btn ghost" href="/competir">salir</Link>
-          </div>
-        </div>
 
         {error && <p className="msg err">{error}</p>}
 

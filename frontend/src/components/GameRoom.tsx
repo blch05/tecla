@@ -11,6 +11,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
 import { closeRoom, publishRoom, roomToken, type RoomGame, seatId } from '@/lib/rooms';
 import Tabs from '@/components/ui/Tabs';
+import PageHeader from '@/components/ui/PageHeader';
 import ArcadeOverlay, { type OverlaySpec } from '@/components/views/arcade/ArcadeOverlay';
 import { gameTabs } from '@/lib/games';
 import { clampGarbage, decideEnd, pickEliminated, resolveColor, standings as rankStandings } from '@/lib/roomLogic';
@@ -394,18 +395,12 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
 
   return (
     <section className="view room">
+      <PageHeader eyebrow={<>* — sala {code} · <span className={'room-badge ' + (cfg.pub ? 'pub' : 'priv')}>{cfg.pub ? 'pública' : 'privada'}</span></>} title={game.name}>
+        <button className="btn" type="button" onClick={copy}>{copied ? 'link copiado' : 'invitar (copiar link)'}</button>
+        <Link className="btn ghost" href="/competir">salir</Link>
+      </PageHeader>
       <div className="room-grid fill">
         <div className="panel room-main">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <div>
-              <span className="eyebrow">* — sala {code} · <span className={'room-badge ' + (cfg.pub ? 'pub' : 'priv')}>{cfg.pub ? 'pública' : 'privada'}</span></span>
-              <h2 className="live-title">{game.name}</h2>
-            </div>
-            <div className="row">
-              <button className="btn" type="button" onClick={copy}>{copied ? 'link copiado' : 'invitar (copiar link)'}</button>
-              <Link className="btn ghost" href="/competir">salir</Link>
-            </div>
-          </div>
           {error && <p className="msg err">{error}</p>}
 
           {phase === 'lobby' && (
