@@ -1,4 +1,4 @@
-import { chunkSentences, processDoc as rawProcessDoc, tokens } from '@/lib/tecla/views/study';
+import { chunkSentences, processDoc as rawProcessDoc, tokens } from '@/lib/study/doc';
 
 // el módulo portado no tiene tipos: acá le damos una firma laxa
 const processDoc = rawProcessDoc as unknown as (raw: string, title?: string) => any;
