@@ -1,5 +1,5 @@
 :root{
-  --bg:#FFFFFF; --surface:#FFFFFF; --ink:#1D2B38; --sub:#98ABBE; --dim:#D6E8F7;
+  --bg:#FFFFFF; --surface:#FFFFFF; --ink:#1D2B38; --sub:#4E5D6C; --faint:#98ABBE; --dim:#D6E8F7;
   --accent:#34A3F0; --accent-2:#92D2FF; --soft:#F0F8FF; --line:#E4EFF8;
   --err:#F0607A; --ok:#20A67E; --warn:#F2B13C; --pat:#E2F1FC;
   color-scheme:light;
@@ -64,7 +64,7 @@ main>.view:is(#v-arcade,.social,.room,.live),main>.view:has(.rooms-host){max-wid
 .tb-inner{position:relative;transition:transform .14s ease-out}
 .words{display:flex;flex-wrap:wrap;column-gap:.62em}
 .word{white-space:nowrap}
-.l{color:var(--sub)}
+.l{color:var(--faint)} /* lo que falta tipear queda claro: se distingue de lo ya escrito */
 .l.ok{color:var(--ink)}
 .l.bad{color:var(--err)}
 .l.extra{color:var(--err);opacity:.55}
@@ -389,7 +389,7 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 :root[data-accent="lavanda"]{--accent:#8A7BF4;--accent-2:#C6BEFF;--soft:#F5F3FF;--dim:#E0DBFD;--line:#EAE7FB;--pat:#ECE9FE}
 :root[data-accent="coral"]{--accent:#F0735F;--accent-2:#FFB9AD;--soft:#FFF4F2;--dim:#FADAD3;--line:#F8E5E1;--pat:#FCE7E2}
 /* ---------- temas: modo oscuro (va después para ganarle a los acentos) ---------- */
-:root[data-theme="dark"]{--bg:#0E151D;--surface:#131C26;--ink:#E4EEF7;--sub:#7189A0;--dim:#243446;--soft:#172431;--line:#1F2E3D;--pat:#1B2A38;--err:#FF6B84;--ok:#3DCB9B;--warn:#F0B45A;color-scheme:dark}
+:root[data-theme="dark"]{--bg:#0E151D;--surface:#131C26;--ink:#E4EEF7;--sub:#A9B7C5;--faint:#6F869C;--dim:#243446;--soft:#172431;--line:#1F2E3D;--pat:#1B2A38;--err:#FF6B84;--ok:#3DCB9B;--warn:#F0B45A;color-scheme:dark}
 :root[data-theme="dark"] .panel,:root[data-theme="dark"] .stage{box-shadow:0 10px 30px -22px rgba(0,0,0,.8)}
 :root[data-theme="dark"] .toast{background:var(--accent);color:#fff}
 
