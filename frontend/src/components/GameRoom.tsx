@@ -31,6 +31,7 @@ const GAMES: Record<GameKey, { name: string; mode: 'battle' | 'coop' | 'royale';
 const DIFFS: Record<Diff, string> = { facil: 'fácil', medio: 'medio', dificil: 'difícil' };
 export const PLAYER_COLORS = ['#34A3F0', '#F0735F', '#1DB386', '#8A7BF4', '#F2B13C', '#E85D9E', '#14B8C4', '#6B7C8F'];
 const ROUND_MS = 20000;
+const MAX_PLAYERS = 8; // uno por color
 
 interface Cfg { game: GameKey; diff: Diff; pub: boolean; phase: Phase; round: number; tok?: string }
 interface Player {
@@ -221,6 +222,20 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     let cancelled = false;
     let retry: number | null = null;
 
+    // si el anfitrión de la ronda se fue de verdad (más de 6 s), lo hereda el siguiente de la lista.
+    // Se revisa en cada aviso de presencia y también cada segundo (puede que no llegue ningún aviso más).
+    const checkRoundHost = () => {
+      const list = playersRef.current, rh = roundHostRef.current;
+      if (rh && !list.some(p => p.id === rh)) {
+        hostGoneSince.current = hostGoneSince.current || Date.now();
+        if (Date.now() - hostGoneSince.current > 6000 && list[0]?.id === meRef.current?.id) {
+          roundHostRef.current = meRef.current!.id; hostGoneSince.current = null;
+          gameRef.current?.promote?.(); // torre: la copia pasa a ser el juego de verdad
+          forceRender(x => x + 1);
+        }
+      } else hostGoneSince.current = null;
+    };
+
     const connect = () => {
       if (cancelled || !meRef.current) return;
       const ch = sb.channel(`room-${code}`, { config: { presence: { key: meRef.current.id }, broadcast: { self: true } } });
@@ -231,12 +246,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
         refresh();
         const list = playersRef.current;
         const h = list[0]; if (h?.cfg?.tok) inheritedTok.current = h.cfg.tok;
-        // si el anfitrión de la ronda se fue de verdad (más de 6 s), lo hereda el siguiente de la lista
-        const rh = roundHostRef.current;
-        if (rh && !list.some(p => p.id === rh)) {
-          hostGoneSince.current = hostGoneSince.current || Date.now();
-          if (Date.now() - hostGoneSince.current > 6000 && list[0]?.id === meRef.current?.id) { roundHostRef.current = meRef.current!.id; forceRender(x => x + 1); }
-        } else hostGoneSince.current = null;
+        checkRoundHost();
         // colores únicos: si alguien que llegó antes tiene el mío (o no tengo), tomo el primero libre
         const next = resolveColor(meRef.current!, list, PLAYER_COLORS);
         if (next) track({ color: next }, true);
@@ -281,7 +291,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       if (!meRef.current) return;
       membersRef.current.state(meRef.current);
       if (chRef.current?.state === 'joined' && Date.now() - lastSt.current > 1500) sendSt();
-      refresh();
+      refresh(); checkRoundHost();
     }, 1000);
 
     import('@/lib/tecla/history').then(({ History }) => {
@@ -371,7 +381,8 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     setMyCfg(next); track({ cfg: next }, true);
   };
   const start = () => {
-    const roster = playersRef.current.map(p => ({ id: p.id, name: p.name, color: p.color }));
+    // juegan los primeros 8 (hay 8 colores); el resto mira la ronda
+    const roster = playersRef.current.slice(0, MAX_PLAYERS).map(p => ({ id: p.id, name: p.name, color: p.color }));
     const round = (cfg.round || 0) + 1;
     setCfg({ phase: 'playing', round });
     endSent.current = 0;

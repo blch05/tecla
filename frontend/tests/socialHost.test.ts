@@ -162,3 +162,87 @@ describe('fin de la partida', () => {
     for (let i = 0; i < 4; i++) { gs = startRound(gs, T0, rng(20 + i)); expect(seen.has(gs.o!.secret)).toBe(false); seen.add(gs.o!.secret); }
   });
 });
+
+describe('jugadores que se van a mitad de partida', () => {
+  it('palabra oculta: si los que quedan ya terminaron, no se espera al que se fue', () => {
+    let gs = newGame('oculta', roster, 1, false, T0, rng(30));
+    const secret = gs.o!.secret!;
+    gs = act(gs, 'a', { type: 'guess', g: secret }, T0, new Set(['a', 'b'])).gs;
+    expect(gs.phase).toBe('playing'); // falta b
+    gs = act(gs, 'b', { type: 'guess', g: secret }, T0, new Set(['a', 'b'])).gs;
+    expect(gs.phase).toBe('reveal'); // c se fue: no se lo espera
+  });
+  it('palabra oculta: el reloj también cierra la ronda si el que faltaba se desconecta', () => {
+    let gs = newGame('oculta', roster, 1, false, T0, rng(31));
+    gs = act(gs, 'a', { type: 'guess', g: gs.o!.secret! }, T0).gs;
+    gs = act(gs, 'b', { type: 'guess', g: gs.o!.secret! }, T0).gs;
+    expect(tick(gs, T0 + 1000, rng(1)).changed).toBe(false); // con todos conectados, c todavía juega
+    const r = tick(gs, T0 + 1000, rng(1), new Set(['a', 'b']));
+    expect(r.changed).toBe(true); expect(r.gs.phase).toBe('reveal');
+  });
+  it('pistas: si se va el que da las pistas, se pasa de turno enseguida', () => {
+    const gs = newGame('pistas', roster, 3, false, T0, rng(32));
+    expect(gs.p!.giver).toBe('a');
+    const r = tick(gs, T0 + 100, rng(1), new Set(['b', 'c']));
+    expect(r.gs.phase).toBe('reveal');
+    expect(Object.values(r.gs.scores).every(v => v === 0)).toBe(true);
+  });
+  it('pistas: la rueda salta a los que no están', () => {
+    let gs = newGame('pistas', roster, 3, false, T0, rng(33));
+    gs = tick(gs, gs.until, rng(1), new Set(['a', 'c'])).gs; // fin de la ronda 1 (se va b)
+    gs = tick(gs, gs.until, rng(1), new Set(['a', 'c'])).gs; // arranca la 2: le tocaba a b
+    expect(gs.round).toBe(2); expect(gs.p!.giver).toBe('c');
+  });
+  it('tutti: la votación cierra cuando están listos los que quedan', () => {
+    let gs = newGame('tutti', roster, 1, false, T0, rng(34));
+    gs = tick(gs, gs.until, rng(1)).gs;
+    expect(gs.phase).toBe('vote');
+    gs = act(gs, 'a', { type: 'ready' }, T0, new Set(['a', 'b'])).gs;
+    expect(gs.phase).toBe('vote');
+    gs = act(gs, 'b', { type: 'ready' }, T0, new Set(['a', 'b'])).gs;
+    expect(gs.phase).toBe('reveal');
+  });
+  it('tutti: el que no escribió nada igual cuenta para la mayoría de la votación', () => {
+    let gs = newGame('tutti', roster, 1, false, T0, rng(35));
+    const L = gs.t!.letter;
+    gs = act(gs, 'a', { type: 'fill', answers: [L + 'aaa'] }, T0).gs; // b y c no escriben nada
+    gs = tick(gs, gs.until, rng(1)).gs;
+    expect(Object.keys(gs.t!.answers!).sort()).toEqual(['a', 'b', 'c']);
+    // un solo voto en contra (de 2 posibles) no alcanza
+    gs = act(gs, 'b', { type: 'vote', cell: 'a:0', against: true }, T0).gs;
+    expect(gs.t!.cell!['a:0']).toBe(10);
+  });
+  it('si no se sabe quién está (o no queda nadie), se usa el roster completo', () => {
+    let gs = newGame('oculta', roster, 1, false, T0, rng(36));
+    gs = act(gs, 'a', { type: 'guess', g: gs.o!.secret! }, T0, new Set()).gs;
+    expect(gs.phase).toBe('playing');
+  });
+});
+
+describe('entradas raras', () => {
+  it('acciones mal formadas no rompen nada', () => {
+    const gs = newGame('tutti', roster, 1, false, T0, rng(40));
+    expect(act(gs, 'a', null as never, T0).changed).toBe(false);
+    expect(act(gs, 'a', { type: 'vote', cell: 'sin-formato', against: true } as never, T0).changed).toBe(false);
+    expect(act(gs, 'a', { type: 'fill', answers: 'no es lista' } as never, T0).changed).toBe(false);
+    const big = act(gs, 'a', { type: 'fill', answers: ['x'.repeat(500), 1 as never, null as never] }, T0).gs;
+    expect(big.t!.answers!.a[0]).toHaveLength(40); expect(big.t!.answers!.a[1]).toBe('1'); expect(big.t!.answers!.a[2]).toBe('');
+  });
+  it('en sopa, una selección fuera de la grilla no encuentra nada', () => {
+    const gs = newGame('sopa', roster, 1, false, T0, rng(41));
+    expect(act(gs, 'a', { type: 'pick', r1: -5, c1: 99, r2: 1e9, c2: NaN }, T0).changed).toBe(false);
+  });
+  it('en pistas, adivinar después de que ganó alguien no suma de nuevo', () => {
+    let gs = newGame('pistas', roster, 1, false, T0, rng(42));
+    gs = act(gs, 'a', { type: 'clue', text: 'zzzpista' }, T0).gs;
+    gs = act(gs, 'b', { type: 'answer', text: gs.p!.secret! }, T0).gs;
+    const before = { ...gs.scores };
+    expect(act(gs, 'c', { type: 'answer', text: gs.p!.secret! }, T0).changed).toBe(false);
+    expect(gs.scores).toEqual(before);
+  });
+  it('en la última ronda de pistas con 1 ronda, termina en over', () => {
+    let gs = newGame('pistas', roster, 1, false, T0, rng(43));
+    gs = tick(gs, gs.until, rng(1)).gs; gs = tick(gs, gs.until, rng(1)).gs;
+    expect(gs.phase).toBe('over');
+  });
+});

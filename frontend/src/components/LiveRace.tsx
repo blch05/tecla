@@ -41,6 +41,8 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [myResult, setMyResult] = useState<{ place: number; wpm: number; acc: number } | null>(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => { setStuck(false); if (!myResult) return; const t = setTimeout(() => setStuck(true), 20000); return () => clearTimeout(t); }, [myResult]);
 
   const trailing = useRef<number | null>(null);
   const membersRef = useRef(new RoomMembers<Racer>(5000));
@@ -260,7 +262,8 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
           <div className="live-result">
             <b>{myResult.place === 1 && current.length > 1 ? '* ganaste' : `llegaste ${myResult.place}º`}</b>
             <span className="sub">{Math.round(myResult.wpm)} ppm · {Math.round(myResult.acc)}% de precisión</span>
-            {isHost && allDone && <button className="btn primary" type="button" onClick={start}>otra ronda</button>}
+            {/* si alguien quedó colgado (no termina), el anfitrión puede seguir a los 20 s */}
+            {isHost && (allDone || stuck) && <button className="btn primary" type="button" onClick={start}>{allDone ? 'otra ronda' : 'otra ronda (sin esperar)'}</button>}
             {!isHost && <span className="hint">el anfitrión puede arrancar otra ronda</span>}
           </div>
         )}

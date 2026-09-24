@@ -146,6 +146,17 @@ export class Arcade {
     const mine = (mp.roster || []).find(r => r.id === mp.me);
     if (mp.coop && mine && (mp.roster || []).length >= 2) this.float(this.W / 2, this.H * .36, 'escribí las palabras de tu color', mine.color, 17);
   }
+  /* torre cooperativa: si se fue el anfitrión, el que hereda la ronda deja de copiar y pasa a simular el juego
+     (con lo último que mandó el anfitrión: bichos, vidas, oleada; la oleada en curso termina con los que quedan) */
+  promote() {
+    if (!this.mirror || !this.mp) return;
+    this.mirror = false; this.waitOv = false; this.mp.role = 'host';
+    this.toSpawn = 0; this.spawnT = 0; this.betweenWaves = false; this.frost = this.frost || 1; this.shock = this.shock || 0;
+    this.nextId = Math.max(this.nextId || 1, ...this.ents.map(e => (e.id || 0) + 1), ...this.ents.map(e => (e.link || 0) + 1));
+    for (const e of this.ents) { if (e.done && e.link) continue; e.done = false; }
+    if (this.overlay?.kind === 'wait') { this.hideOv(); this.offerUpgrades(); } // estaba eligiendo mejora el anfitrión
+    this.float(this.W / 2, this.H * .3, 'ahora sos el anfitrión', this.c.acc, 18);
+  }
   /* torre cooperativa: cada bicho es de un jugador (su color) y solo ese jugador puede escribirlo */
   coopPlayers() {
     if (!this.mp?.coop) return [];

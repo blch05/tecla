@@ -45,9 +45,13 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
     },
     act: (p: { from?: string; a?: any }) => {
       if (!amHostRef.current || !gsRef.current || !p?.from) return;
-      const r = hostAct(gsRef.current, p.from, p.a, Date.now());
+      const t = Date.now();
+      // el reloj también avanza con cada mensaje (si la pestaña del anfitrión está en segundo plano,
+      // el navegador frena sus temporizadores pero no los mensajes que llegan)
+      const tk = tick(gsRef.current, t, Math.random, activeRef.current);
+      const r = hostAct(tk.gs, p.from, p.a, t, activeRef.current);
       if (r.reply) sendRef.current(r.reply.event, { ...r.reply.payload, to: r.reply.to });
-      if (r.changed) { gsRef.current = r.gs; broadcast(); }
+      if (r.changed || tk.changed) { gsRef.current = r.gs; broadcast(); }
     },
     marks: (p: any) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setReply({ event: 'marks', payload: p, n: Date.now() }); },
     'clue-error': (p: any) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setReply({ event: 'clue-error', payload: p, n: Date.now() }); },
@@ -60,27 +64,38 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
   const amHostRef = useRef(false); amHostRef.current = isHost;
   const meIdRef = useRef<string | undefined>(undefined); meIdRef.current = meRef.current?.id;
   const sendRef = useRef(send); sendRef.current = send;
+  // quiénes siguen conectados: los que se fueron no traban la ronda (ver lib/social/host)
+  const activeRef = useRef<Set<string>>(new Set()); activeRef.current = new Set(players.map(p => p.id));
 
   const cfg = ((host?.cfg as unknown as Cfg) || initialCfg);
   const me = meRef.current?.id || '';
 
   /* ---------- anfitrión: publicar estado, reloj y secretos ---------- */
-  const broadcast = useCallback(() => {
+  const sendState = useCallback(() => {
     const gs = gsRef.current; if (!gs) return;
     const t = Date.now();
     sendRef.current('gs', publicView(gs, t) as unknown as Record<string, unknown>);
     if (gs.p?.secret && gs.phase === 'playing') sendRef.current('secret', { to: gs.p.giver, w: gs.p.shown || gs.p.secret });
   }, []);
+  // los cambios se agrupan: como mucho ~8 envíos por segundo aunque muchos escriban a la vez
+  // (Supabase corta a los clientes que mandan más de 10 mensajes por segundo)
+  const pending = useRef<number | null>(null), lastSent = useRef(0);
+  const broadcast = useCallback(() => {
+    const wait = 120 - (Date.now() - lastSent.current);
+    if (wait <= 0) { if (pending.current) { clearTimeout(pending.current); pending.current = null; } lastSent.current = Date.now(); sendState(); return; }
+    if (!pending.current) pending.current = window.setTimeout(() => { pending.current = null; lastSent.current = Date.now(); sendState(); }, wait);
+  }, [sendState]);
+  useEffect(() => () => { if (pending.current) clearTimeout(pending.current); }, []);
   useEffect(() => {
     if (!isHost) return;
     const iv = setInterval(() => {
       const gs = gsRef.current; if (!gs) return;
-      const r = tick(gs, Date.now(), Math.random);
+      const r = tick(gs, Date.now(), Math.random, activeRef.current);
       if (r.changed) { gsRef.current = r.gs; broadcast(); }
     }, 250);
-    const hb = setInterval(broadcast, 3000); // para los que se reconectan o llegan tarde
+    const hb = setInterval(sendState, 3000); // para los que se reconectan o llegan tarde
     return () => { clearInterval(iv); clearInterval(hb); };
-  }, [isHost, broadcast]);
+  }, [isHost, broadcast, sendState]);
 
   // si el anfitrión cambió a mitad de partida, el nuevo no tiene los secretos: vuelven todos a la sala
   useEffect(() => {
@@ -112,7 +127,8 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
   /* ---------- acciones ---------- */
   const setCfg = (patch: Partial<Cfg>) => track({ cfg: { ...(meRef.current?.cfg || {}), ...patch } }, true);
   const start = () => {
-    const roster = players.map(p => ({ id: p.id, name: p.name, color: p.color }));
+    // juegan los primeros 8 (hay 8 colores); el resto mira la partida
+    const roster = players.slice(0, PLAYER_COLORS.length).map(p => ({ id: p.id, name: p.name, color: p.color }));
     gsRef.current = newGame(cfg.game, roster, cfg.rounds, cfg.spicy, Date.now(), Math.random);
     setCfg({ phase: 'playing' }); broadcast();
   };
@@ -155,7 +171,7 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
                     <button type="button" className={'opt' + (!cfg.pub ? ' on' : '')} onClick={() => setCfg({ pub: false })}>privada</button>
                   </div>
                   <button className="btn primary big" type="button" disabled={!canStart(cfg.game, players.length)} onClick={start}>
-                    {canStart(cfg.game, players.length) ? `empezar con ${players.length} ${players.length === 1 ? 'jugador' : 'jugadores'}` : 'hacen falta al menos 2 jugadores'}
+                    {canStart(cfg.game, players.length) ? `empezar con ${Math.min(players.length, PLAYER_COLORS.length)} ${players.length === 1 ? 'jugador' : 'jugadores'}${players.length > PLAYER_COLORS.length ? ` (${players.length - PLAYER_COLORS.length} miran)` : ''}` : 'hacen falta al menos 2 jugadores'}
                   </button>
                 </div>
               ) : <p className="hint" style={{ textAlign: 'left' }}>{host?.name || 'El anfitrión'} elige el juego y arranca · {cfg.rounds} rondas{cfg.spicy ? ' · picante' : ''}</p>}
