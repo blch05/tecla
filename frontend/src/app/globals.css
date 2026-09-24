@@ -401,6 +401,11 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 :root[data-accent="menta"]{--accent:#1DB386;--accent-2:#8BE3C6;--soft:#EFFBF6;--dim:#CDEFE1;--line:#E0F3EA;--pat:#DCF3E9}
 :root[data-accent="lavanda"]{--accent:#8A7BF4;--accent-2:#C6BEFF;--soft:#F5F3FF;--dim:#E0DBFD;--line:#EAE7FB;--pat:#ECE9FE}
 :root[data-accent="coral"]{--accent:#F0735F;--accent-2:#FFB9AD;--soft:#FFF4F2;--dim:#FADAD3;--line:#F8E5E1;--pat:#FCE7E2}
+/* ---------- tienda: colores de acento que se compran ---------- */
+:root[data-accent="atardecer"]{--accent:#F2766B;--accent-2:#FFB39A;--soft:#FFF4EF;--dim:#FAD9CC;--line:#F8E4DC;--pat:#FCE6DD}
+:root[data-accent="neon"]{--accent:#2BC94A;--accent-2:#9BEFA9;--soft:#F0FCF2;--dim:#CFF3D6;--line:#E0F6E4;--pat:#D9F5DF}
+:root[data-accent="noche"]{--accent:#4F5BD5;--accent-2:#A9B0F2;--soft:#F2F3FD;--dim:#D9DCF8;--line:#E6E8FA;--pat:#E3E5FA}
+:root[data-accent="oro"]{--accent:#D9A21B;--accent-2:#F2D27A;--soft:#FFF9EA;--dim:#F6E6B8;--line:#F5ECCF;--pat:#F8EDC9}
 /* ---------- temas: modo oscuro (va después para ganarle a los acentos) ---------- */
 :root[data-theme="dark"]{--bg:#0E151D;--surface:#131C26;--ink:#E4EEF7;--sub:#A9B7C5;--faint:#6F869C;--dim:#243446;--soft:#172431;--line:#1F2E3D;--pat:#1B2A38;--err:#FF6B84;--ok:#3DCB9B;--warn:#F0B45A;color-scheme:dark}
 :root[data-theme="dark"] .panel,:root[data-theme="dark"] .stage{box-shadow:0 10px 30px -22px rgba(0,0,0,.8)}
@@ -722,3 +727,43 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 /* competir: la arena de cada juego y el panel del final encima */
 .arena-host{position:relative;flex:1;display:flex;flex-direction:column;min-height:0}
 .arena-area{flex:1;display:flex;flex-direction:column;min-height:0}
+
+/* ---------- tienda: cursores (data-caret en <html>) ---------- */
+:is(:root[data-caret="grueso"],[data-caret-prev="grueso"]) .caret:not(.ghost){width:4px;margin-left:-2px}
+:is(:root[data-caret="bloque"],[data-caret-prev="bloque"]) .caret:not(.ghost){width:.62em;height:1.2em;margin-top:.22em;margin-left:0;opacity:.32;border-radius:3px}
+:is(:root[data-caret="subrayado"],[data-caret-prev="subrayado"]) .caret:not(.ghost){width:.62em;height:3px;margin-top:1.3em;margin-left:0}
+:is(:root[data-caret="arcoiris"],[data-caret-prev="arcoiris"]) .caret:not(.ghost){width:3px;background:linear-gradient(180deg,#F0735F,#F2B13C,#1DB386,#34A3F0,#8A7BF4);animation:blink 1s step-end infinite,hue 3s linear infinite}
+:root[data-caret="arcoiris"] .tb.typing .caret:not(.ghost){animation:hue 3s linear infinite}
+@keyframes hue{to{filter:hue-rotate(360deg)}}
+
+/* ---------- tienda: marcos del avatar (data-frame) ---------- */
+.avatar[data-frame="punteado"]{border:2px dashed var(--accent)}
+.avatar[data-frame="doble"]{border-color:var(--accent);box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--accent)}
+.avatar[data-frame="neon"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent),0 0 16px 2px var(--accent)}
+.avatar[data-frame="arcoiris"]{border:3px solid transparent;background:linear-gradient(var(--soft),var(--soft)) padding-box,conic-gradient(#F0735F,#F2B13C,#1DB386,#34A3F0,#8A7BF4,#F0735F) border-box;animation:hue 4s linear infinite}
+.ptitle{display:inline-block;align-self:flex-start;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent-2);border-radius:99px;padding:1px 9px;margin-top:2px}
+
+/* ---------- tienda ---------- */
+.wallet{display:inline-flex;align-items:center;gap:6px;font-family:var(--display);font-weight:700;color:var(--ink);text-decoration:none;padding:4px 12px;border-radius:99px;background:var(--soft);border:1px solid var(--line);font-size:14px}
+.wallet b{color:var(--accent)}
+.shop-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;flex:1;min-height:0}
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;align-content:start;overflow:auto;padding:2px}
+.shop-card{display:flex;flex-direction:column;gap:8px;padding:14px;border:1.5px solid var(--line);border-radius:14px;background:var(--surface);position:relative}
+.shop-card.owned{border-color:var(--accent-2)}
+.shop-card.on{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+.shop-card .rar{position:absolute;top:10px;right:12px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--sub)}
+.shop-card .rar.rara{color:var(--accent)}
+.shop-card .rar.epica{color:var(--warn)}
+.shop-card b{font-family:var(--display);font-size:.95rem}
+.shop-card .price{font-family:var(--display);font-weight:700;color:var(--accent)}
+.shop-card .row{justify-content:space-between;margin-top:auto}
+.shop-prev{height:70px;border-radius:10px;background:var(--soft);display:grid;place-items:center;overflow:hidden}
+.shop-prev .caret-demo{position:relative;font-size:1.3rem;font-family:var(--mono);color:var(--ink)}
+.shop-prev .caret-demo .caret{position:absolute;left:auto;top:0;transform:none;animation:none}
+.shop-prev .sw-big{width:38px;height:38px;border-radius:50%}
+.shop-prev .avatar{width:44px;height:44px;font-size:20px}
+.shop-side{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
+.shop-log{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.shop-log div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed var(--line);padding:3px 0}
+.shop-log .plus{color:var(--ok);font-weight:600}.shop-log .minus{color:var(--err);font-weight:600}
+@media (max-width:900px){ .shop-body{grid-template-columns:1fr} }

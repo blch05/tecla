@@ -12,6 +12,7 @@
 import { clamp } from '@/lib/tecla/utils';
 import { VOCAB } from '@/lib/tecla/data/words';
 import { Sfx } from '@/lib/tecla/sfx';
+import { runnerSkin } from '@/lib/shop/client';
 
 const M_PER_CPS = 1.3;      // metros por segundo por cada letra/s
 const GAP0 = 20, GAP_MAX = 35, TRAMO_M = 500;
@@ -46,6 +47,7 @@ function layout(g) {
 }
 export function runnerStart(g) {
   layout(g);
+  g.skin = runnerSkin(); // aspecto comprado en la tienda (solo estético)
   Object.assign(g, {
     tape: [], si: 0, ci: 0, gap: GAP0, cps: 0, recent: [], beats: [], ritmo: 0, grace: 1600,
     chaseCps: 2.4 * g.D.speed, lane: 1, laneY: 1, laneWords: null, laneTarget: null, choice: null,
@@ -296,7 +298,9 @@ export function runnerDraw(g) {
 function drawRunner(g, px, py, sc) {
   const x = g.ctx, ph = g.runPh * 0.9 + g.t / 400, st = g.stumble || 0;
   x.save(); x.translate(px, py); x.rotate(st * 0.35);
-  x.strokeStyle = g.c.acc; x.fillStyle = g.c.acc; x.lineWidth = 2.6; x.lineCap = 'round';
+  const col = g.skin === 'rojo' ? g.c.err : g.skin === 'dorado' ? '#D9A21B' : g.skin === 'fantasma' ? g.c.acc2 : g.skin === 'arcoiris' ? `hsl(${(g.t / 8) % 360} 75% 55%)` : g.c.acc;
+  if (g.skin === 'fantasma') x.globalAlpha = 0.55;
+  x.strokeStyle = col; x.fillStyle = col; x.lineWidth = 2.6; x.lineCap = 'round';
   x.beginPath(); x.arc(0, -34 * sc, 6.5 * sc, 0, Math.PI * 2); x.fill();
   const lg = Math.sin(ph), ar = Math.cos(ph);
   x.beginPath(); x.moveTo(0, -27 * sc); x.lineTo(0, -12 * sc);

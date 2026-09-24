@@ -184,3 +184,47 @@ describe('salas online', () => {
     assert.ok(r.status === 200 ? r.json.length === 0 : denied(r));
   });
 });
+
+// ---------------------------------------------------------
+describe('tienda', async () => {
+  const probe = await rest('shop_items?select=id&limit=1');
+  const ready = probe.status === 200;
+  const skip = !ready && 'migración de la tienda sin aplicar';
+
+  test('el catálogo se puede leer y tiene precios positivos', { skip }, async () => {
+    const r = await rest('shop_items?select=id,slot,price&active=eq.true');
+    assert.equal(r.status, 200); assert.ok(r.json.length >= 10);
+    for (const it of r.json) assert.ok(it.price > 0);
+  });
+  test('sin sesión no se puede comprar, equipar ni ver un monedero', { skip }, async () => {
+    const b = await rpc('buy_item', { p_item: 'cursor-grueso' });
+    assert.ok(b.status >= 400 || b.json?.ok === false);
+    const e = await rpc('equip_item', { p_slot: 'cursor', p_item: 'cursor-grueso' });
+    assert.ok(e.status >= 400 || e.json?.ok === false);
+    const w = await rest('wallets?select=*');
+    assert.ok(w.status === 200 ? w.json.length === 0 : denied(w));
+  });
+  test('nadie puede escribir directo en monedero, inventario, equipados ni catálogo', { skip }, async () => {
+    for (const [t, body] of [['wallets', { user_id: crypto.randomUUID(), balance: 99999 }], ['inventory', { user_id: crypto.randomUUID(), item_id: 'cursor-grueso' }],
+      ['equipped', { user_id: crypto.randomUUID(), slot: 'cursor', item_id: 'cursor-grueso' }], ['shop_items', { id: 'gratis', slot: 'cursor', name: 'x', price: 1 }], ['coin_log', { user_id: crypto.randomUUID(), amount: 999, reason: 'x' }]]) {
+      const r = await rest(t, { method: 'POST', body });
+      assert.ok(r.status >= 400, `${t} aceptó una escritura directa (${r.status})`);
+    }
+  });
+  test('cuánto paga cada partida (y los casos que no pagan)', { skip }, async () => {
+    const c = async a => (await rpc('run_coins', { p_kind: 'test', p_finished: true, p_won: null, p_wpm: 0, p_accuracy: 100, p_score: null, p_points: null, ...a })).json;
+    assert.equal(await c({ p_wpm: 60, p_accuracy: 90 }), 7);
+    assert.equal(await c({ p_wpm: 300, p_accuracy: 100 }), 9);   // tope por partida
+    assert.equal(await c({ p_wpm: 80, p_accuracy: 74 }), 0);     // poca precisión
+    assert.equal(await c({ p_kind: 'arcade', p_score: 0 }), 0);   // arcade sin puntos
+    assert.equal(await c({ p_kind: 'arcade', p_score: 1e6 }), 10);
+    assert.equal(await c({ p_kind: 'comp', p_won: true }), 8);
+    assert.equal(await c({ p_kind: 'comp', p_won: null }), 3);
+    assert.equal(await c({ p_kind: 'study', p_points: 1000 }), 6);
+    assert.equal(await c({ p_kind: 'otra' }), 0);
+  });
+  test('los cosméticos públicos de un usuario inexistente vienen vacíos', { skip }, async () => {
+    const r = await rpc('public_cosmetics', { p_username: 'nadie_' + Date.now() });
+    assert.deepEqual(r.json, {});
+  });
+});

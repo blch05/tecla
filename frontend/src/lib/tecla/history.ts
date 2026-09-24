@@ -148,6 +148,8 @@ export const History = {
       pending.forEach(r => this.cloud.set(r.id, { ...r, s: 1 }));
       this.saveLocal(this.local().map(r => (ok.has(r.id) ? { ...r, s: 1 as const } : r)));
       this.fails = 0;
+      // la base acredita teclas* al guardar partidas (ver migración shop): la tienda se entera y avisa
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tecla:runs-saved'));
     } catch {
       this.fails++;
       setTimeout(() => this.push(), 2500 * this.fails);

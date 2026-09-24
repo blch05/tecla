@@ -9,6 +9,8 @@ import { DIFF_NAMES, GAME_INFO, type Diff } from '@/lib/games';
 import type { RoomGame } from '@/lib/rooms';
 import Tabs from '@/components/ui/Tabs';
 import PageHeader from '@/components/ui/PageHeader';
+import { useShop } from '@/lib/shop/client';
+import { EFFECT, titleOf } from '@/lib/shop/catalog';
 
 const KINDS = [{ id: 'all', label: 'todo' }, { id: 'test', label: 'tests' }, { id: 'arcade', label: 'arcade' }, { id: 'comp', label: 'competir' }, { id: 'study', label: 'estudiar' }];
 const GLYPH: Record<string, string> = { test: '|', arcade: '*', comp: '—', study: '/' };
@@ -32,6 +34,7 @@ const num = (n: number) => n.toLocaleString('es');
 
 export default function ProfileView() {
   const H = useHistory();
+  const shop = useShop();
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [per, setPer] = useState(8);
@@ -62,13 +65,14 @@ export default function ProfileView() {
       <div className="col">
         <div className="panel phead">
           <span className="corner">* — |</span>
-          <div className="avatar">
+          <div className="avatar" data-frame={EFFECT[shop.state?.equipped.marco || ''] || undefined}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {me?.avatarUrl ? <img src={me.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <span>{name[0].toUpperCase()}</span>}
           </div>
           <div className="pinfo">
             <span className="eyebrow">{me?.username ? '@' + me.username : 'perfil'}</span>
             <h2>{name}</h2>
+            {titleOf(shop.items || [], shop.state?.equipped.titulo) && <span className="ptitle">{titleOf(shop.items || [], shop.state?.equipped.titulo)}</span>}
             <p className="sub">nivel {L.lv} · {num(xp)} puntos · faltan {num(L.next)} para el nivel {L.lv + 1}</p>
             <div className="progress" style={{ maxWidth: 420 }}><i style={{ width: `${(L.pct * 100).toFixed(1)}%` }} /></div>
           </div>

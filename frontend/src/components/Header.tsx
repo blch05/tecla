@@ -7,6 +7,7 @@ import type { HistoryUser } from '@/lib/tecla/history';
 import PillNav from '@/components/bits/PillNav';
 import DecryptedText from '@/components/bits/DecryptedText';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
+import { useShop } from '@/lib/shop/client';
 
 const LINKS = [
   { href: '/test', label: 'test' },
@@ -15,6 +16,7 @@ const LINKS = [
   { href: '/estudiar', label: 'estudiar' },
   { href: '/ranking', label: 'ranking' },
   { href: '/progreso', label: 'progreso' },
+  { href: '/tienda', label: 'tienda' },
   { href: '/perfil', label: 'perfil' },
 ];
 
@@ -33,6 +35,7 @@ export default function Header() {
   }, []);
 
   const active = LINKS.find(l => pathname.startsWith(l.href))?.href;
+  const shop = useShop();
 
   return (
     <header className="top">
@@ -62,6 +65,7 @@ export default function Header() {
       />
       <div className="bars" aria-hidden="true" />
       <ThemeSwitcher />
+      {shop.state && <Link className="wallet" href="/tienda" title="tus teclas* · ir a la tienda">✱ <b>{shop.state.balance.toLocaleString('es')}</b></Link>}
       <Link className="auth" href={user ? '/perfil' : '/login'}>
         {user ? (
           user.avatarUrl

@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ACCENTS, applyTheme, readTheme, type Theme } from '@/lib/theme';
+import { ACCENTS, applyTheme, PREMIUM, readTheme, type Theme } from '@/lib/theme';
+import { useShop } from '@/lib/shop/client';
 
 export default function ThemeSwitcher() {
   const [theme, setTheme] = useState<Theme | null>(null);
+  const shop = useShop();
+  const all = [...ACCENTS, ...PREMIUM.filter(p => shop.owns(p.item))];
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -18,7 +21,7 @@ export default function ThemeSwitcher() {
   }, [open]);
 
   const set = (patch: Partial<Theme>) => { const t = { ...(theme || readTheme()), ...patch }; setTheme(t); applyTheme(t); };
-  const accent = ACCENTS.find(a => a.key === theme?.accent) || ACCENTS[0];
+  const accent = [...ACCENTS, ...PREMIUM].find(a => a.key === theme?.accent) || ACCENTS[0];
 
   return (
     <div className="theme-sw" ref={ref}>
@@ -34,7 +37,7 @@ export default function ThemeSwitcher() {
           </div>
           <span className="lbl">color</span>
           <div className="swatches">
-            {ACCENTS.map(a => (
+            {all.map(a => (
               <button key={a.key} type="button" title={a.label} aria-label={a.label} className={'swatch-btn' + (a.key === theme.accent ? ' on' : '')} onClick={() => set({ accent: a.key })}>
                 <span className="swatch" style={{ background: a.color }} />
               </button>

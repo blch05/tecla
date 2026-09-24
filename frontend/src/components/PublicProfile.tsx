@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import PageHeader from '@/components/ui/PageHeader';
 import { useEffect, useState } from 'react';
+import { getSupabase } from '@/lib/supabase/client';
+import { EFFECT } from '@/lib/shop/catalog';
 import CountUp from '@/components/bits/CountUp';
 import SpotlightCard from '@/components/bits/SpotlightCard';
 import { DIFF_NAMES, GAME_NAMES, fmt, levelFor, modeLabel } from '@/lib/format';
@@ -37,6 +39,16 @@ export default function PublicProfile({ p }: { p: PublicProfileData }) {
   const [copied, setCopied] = useState(false);
   const [isMe, setIsMe] = useState(false);
 
+  // marco y título que eligió esta persona en la tienda (si la tienda está activada)
+  const [cos, setCos] = useState<{ marco?: string; titulo?: string }>({});
+  const [cosTitle, setCosTitle] = useState<string | null>(null);
+  useEffect(() => {
+    const sb = getSupabase(); if (!sb) return;
+    sb.rpc('public_cosmetics', { p_username: p.username }).then(({ data }) => {
+      const c = (data || {}) as { marco?: string; titulo?: string }; setCos(c);
+      if (c.titulo) sb.from('shop_items').select('name').eq('id', c.titulo).maybeSingle().then(({ data: t }) => setCosTitle((t as { name?: string } | null)?.name || null));
+    });
+  }, [p.username]);
   useEffect(() => {
     let unsub = () => {};
     import('@/lib/tecla/history').then(({ History }) => {
@@ -62,13 +74,14 @@ export default function PublicProfile({ p }: { p: PublicProfileData }) {
       </PageHeader>
       <div className="panel phead pub-head">
         <span className="corner" aria-hidden="true">* — |</span>
-        <div className="avatar big-av">
+        <div className="avatar big-av" data-frame={EFFECT[cos.marco || ''] || undefined}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {p.avatar_url ? <img src={p.avatar_url} alt="" referrerPolicy="no-referrer" /> : <span>{name[0]?.toUpperCase()}</span>}
         </div>
         <div className="pinfo">
           <span className="eyebrow">@{p.username} · juega desde {since}</span>
           <h2>{name}</h2>
+          {cosTitle && <span className="ptitle">{cosTitle}</span>}
           <p className="sub">nivel {L.lv} · {fmt(p.points)} puntos</p>
           <div className="progress" style={{ maxWidth: 420 }}><i style={{ width: `${(L.pct * 100).toFixed(1)}%` }} /></div>
         </div>
