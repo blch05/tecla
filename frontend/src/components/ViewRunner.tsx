@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-type ViewName = 'test' | 'comp' | 'arcade' | 'study' | 'stats' | 'profile';
+type ViewName = 'test' | 'comp' | 'arcade' | 'study';
 
 interface View { init?: () => void; enter?: () => void; leave?: () => void }
 
@@ -12,8 +12,6 @@ const loaders: Record<ViewName, () => Promise<View>> = {
   comp: () => import('@/lib/tecla/views/compete').then(m => m.Comp),
   arcade: () => import('@/lib/tecla/views/arcade').then(m => m.Arc),
   study: () => import('@/lib/tecla/views/study').then(m => m.Study),
-  stats: () => import('@/lib/tecla/views/stats').then(m => m.Stats),
-  profile: () => import('@/lib/tecla/views/profile').then(m => m.ProfileView),
 };
 
 export default function ViewRunner({ view }: { view: ViewName }) {

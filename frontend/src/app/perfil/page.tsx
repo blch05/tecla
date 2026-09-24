@@ -1,11 +1,11 @@
-import ViewRunner from '@/components/ViewRunner';
+import ProfileView from '@/components/views/ProfileView';
 
 export const metadata = { title: 'perfil · tecla*' };
 
 export default function PerfilPage() {
   return (
     <section className="view" id="v-profile">
-      <ViewRunner view="profile" />
+      <ProfileView />
     </section>
   );
 }

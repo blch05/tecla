@@ -102,6 +102,7 @@ main>.view:is(#v-arcade,.social,.room,.live),main>.view:has(.rooms-host){max-wid
 .legend i.d{background:none;border-top:2px dashed var(--sub)}
 
 .btn{background:var(--surface);border:1px solid var(--line);color:var(--ink);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13.5px;display:inline-flex;gap:8px;align-items:center;transition:border-color .15s,background .15s}
+a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 .btn:hover{border-color:var(--accent-2)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;box-shadow:0 2px 10px -4px var(--accent)}
 .btn.primary:hover{filter:brightness(1.06)}

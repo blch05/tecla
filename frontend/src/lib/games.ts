@@ -27,3 +27,7 @@ export const GAME_GROUPS: { id: GameGroup; name: string; games: RoomGame[] }[] =
 /** Opciones para las pestañas de juegos (componente Tabs, variante "card"). */
 export const gameTabs = (ids: RoomGame[], withHow = true) =>
   ids.map(id => ({ id, label: GAME_INFO[id].name, glyph: GAME_INFO[id].glyph, sub: withHow ? GAME_INFO[id].how : undefined }));
+
+/** Nombres de las dificultades (arcade, salas, perfil). */
+export type Diff = 'facil' | 'medio' | 'dificil';
+export const DIFF_NAMES: Record<Diff, string> = { facil: 'fácil', medio: 'medio', dificil: 'difícil' };

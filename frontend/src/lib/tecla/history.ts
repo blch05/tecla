@@ -28,6 +28,8 @@ export interface Run {
 export interface HistoryUser { id: string; name: string; username: string | null; avatarUrl: string | null; email: string | null }
 export interface DailyRow { rank: number; user_id: string; display_name: string | null; avatar_url: string | null; wpm: number; accuracy: number }
 
+/** fecha del runner nuevo (persecución por carriles) */
+const RUNNER_V2 = Date.UTC(2026, 8, 24);
 const uuid = () => (crypto && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`);
 
 function toRow(r: Run) {
@@ -156,9 +158,11 @@ export const History = {
 
   /** Mejor puntaje de arcade entre lo local y la nube. */
   bestArcade(game: string, diff: string): number {
-    const key = 'arc:' + game + (diff === 'medio' ? '' : ':' + diff);
+    // el runner cambió por completo el 24/09/2026: sus récords viejos no cuentan
+    const runner = game === 'runner', since = runner ? RUNNER_V2 : 0;
+    const key = 'arc:' + game + (runner ? '-p' : '') + (diff === 'medio' ? '' : ':' + diff);
     let best = store.get(key, 0);
-    this.cloud.forEach(r => { if (r.t === 'arcade' && r.game === game && r.diff === diff) best = Math.max(best, r.score || 0); });
+    this.cloud.forEach(r => { if (r.t === 'arcade' && r.game === game && r.diff === diff && (r.d || 0) >= since) best = Math.max(best, r.score || 0); });
     return best;
   },
 
