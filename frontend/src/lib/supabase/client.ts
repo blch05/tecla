@@ -14,7 +14,9 @@ export function getSupabase(): SupabaseClient | null {
   const configured = !!url && !!key && !url.includes('TU-PROYECTO');
   client = configured
     ? createClient(url!, key!, {
-        auth: { flowType: 'pkce', persistSession: true, detectSessionInUrl: true, autoRefreshToken: true },
+        // flujo implícito: el link del email trae la sesión en la URL y funciona aunque se abra en otro
+        // navegador o dispositivo (con PKCE solo andaba en el mismo navegador donde se pidió el link)
+        auth: { flowType: 'implicit', persistSession: true, detectSessionInUrl: true, autoRefreshToken: true },
       })
     : null;
   return client;

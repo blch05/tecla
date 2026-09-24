@@ -333,6 +333,9 @@ body{margin:0}
 .login .or::before,.login .or::after{content:"";flex:1;border-top:1px dashed var(--dim)}
 .login .msg{font-size:13.5px;padding:10px 12px;border-radius:9px;background:var(--soft)}
 .login .msg.err{color:var(--err)}
+.login .otp-input{font-family:var(--display);font-size:22px;letter-spacing:.4em;text-align:center;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+.login .otp-input:focus{outline:2px solid var(--accent-2);outline-offset:0}
+.login .otp-input::placeholder{color:var(--dim)}
 
 
 /* ---------- React Bits: navegación (PillNav) con la paleta de tecla* ----------
