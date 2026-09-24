@@ -1,24 +1,18 @@
 'use client';
 
 /* Progreso: resumen de tests, gráfico de velocidad, mapa de calor del teclado y combinaciones lentas. */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Tabs from '@/components/ui/Tabs';
+import DomNode from '@/components/ui/DomNode';
 
 interface Mods {
   store: any; avg: (a: number[]) => number; baseKey: (k: string) => string;
   KS: any; weakData: () => { bis: { b: string; ms: number; err: number }[] };
-  lineChart: (series: any[], opts: any) => Node; Test: any;
+  lineChart: (series: any[], opts: any) => Node;
 }
 interface HistRow { wpm: number; acc: number; weak?: boolean }
 const ROWS = ['qwertyuiop', 'asdfghjklñ', 'zxcvbnm'];
-
-/** Un nodo del DOM armado por los módulos viejos (el gráfico) dentro de React. */
-function DomNode({ node }: { node: Node | null }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { const el = ref.current; if (!el) return; el.replaceChildren(); if (node) el.append(node); }, [node]);
-  return <div ref={ref} />;
-}
 
 /** Tendencia de los últimos tests (regresión lineal): cuánto mejorás por test y cuándo llegás a la próxima decena. */
 export function projection(ys: number[]) {
@@ -39,8 +33,8 @@ export default function StatsView() {
   const [sure, setSure] = useState(false);
   const [ver, bump] = useState(0);
   useEffect(() => {
-    Promise.all([import('@/lib/tecla/utils'), import('@/lib/tecla/keystats'), import('@/lib/tecla/charts'), import('@/lib/tecla/views/test'), import('@/lib/tecla/input')])
-      .then(([u, k, c, t, input]) => { input.setConsumer(null); setM({ store: u.store, avg: u.avg, baseKey: u.baseKey, KS: k.KS, weakData: k.weakData, lineChart: c.lineChart, Test: t.Test }); });
+    Promise.all([import('@/lib/tecla/utils'), import('@/lib/tecla/keystats'), import('@/lib/tecla/charts'), import('@/lib/tecla/input')])
+      .then(([u, k, c, input]) => { input.setConsumer(null); setM({ store: u.store, avg: u.avg, baseKey: u.baseKey, KS: k.KS, weakData: k.weakData, lineChart: c.lineChart }); });
   }, []);
   useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(false), 4000); return () => clearTimeout(t); }, [sure]);
 
@@ -67,7 +61,8 @@ export default function StatsView() {
     m.KS.keys = {}; m.KS.bi = {}; setSure(false); bump(x => x + 1);
     import('@/lib/tecla/utils').then(u => u.toast('Progreso borrado'));
   };
-  const trainWeak = () => { m.Test.cfg.weak = true; m.Test.save(); router.push('/test'); };
+  // el test lee su configuración del almacenamiento al abrirse
+  const trainWeak = () => { m.store.set('cfg', { ...m.store.get('cfg', {}), weak: true }); router.push('/test'); };
 
   return (
     <>

@@ -2,13 +2,12 @@
 
 import { useEffect } from 'react';
 
-type ViewName = 'test' | 'comp' | 'arcade' | 'study';
+type ViewName = 'comp' | 'arcade' | 'study';
 
 interface View { init?: () => void; enter?: () => void; leave?: () => void }
 
 // cada vista es un módulo imperativo (DOM + canvas) que se monta sobre el markup de su página
 const loaders: Record<ViewName, () => Promise<View>> = {
-  test: () => import('@/lib/tecla/views/test').then(m => m.Test),
   comp: () => import('@/lib/tecla/views/compete').then(m => m.Comp),
   arcade: () => import('@/lib/tecla/views/arcade').then(m => m.Arc),
   study: () => import('@/lib/tecla/views/study').then(m => m.Study),
