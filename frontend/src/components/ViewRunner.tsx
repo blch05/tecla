@@ -2,13 +2,12 @@
 
 import { useEffect } from 'react';
 
-type ViewName = 'comp' | 'arcade';
+type ViewName = 'arcade';
 
 interface View { init?: () => void; enter?: () => void; leave?: () => void }
 
 // cada vista es un módulo imperativo (DOM + canvas) que se monta sobre el markup de su página
 const loaders: Record<ViewName, () => Promise<View>> = {
-  comp: () => import('@/lib/tecla/views/compete').then(m => m.Comp),
   arcade: () => import('@/lib/tecla/views/arcade').then(m => m.Arc),
 };
 

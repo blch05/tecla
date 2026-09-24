@@ -708,3 +708,7 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 .arc-top .tabs{justify-content:flex-start}
 @media (max-width:900px){ .social-lobby .tabs-card{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:760px){ .tabs-card .tab{padding:8px 12px;font-size:13.5px;gap:6px} .tab-glyph{min-width:0} .tab-sub{display:none} }
+
+/* competir: la arena de cada juego y el panel del final encima */
+.arena-host{position:relative;flex:1;display:flex;flex-direction:column;min-height:0}
+.arena-area{flex:1;display:flex;flex-direction:column;min-height:0}

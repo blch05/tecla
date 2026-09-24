@@ -1,19 +1,22 @@
 // @ts-nocheck — módulo portado del prototipo; pendiente de tipar (ver README)
-import { $, $$, h, nav, now, rand, rng, shuffle, store, toast, todayKey } from '@/lib/tecla/utils';
+import { $, $$, h, now, rand, rng, shuffle, store, toast, todayKey } from '@/lib/tecla/utils';
 import { BOT_NAMES, VOCAB, compVocab, passage, wordGen } from '@/lib/tecla/data/words';
 import { TypeBox } from '@/lib/tecla/typebox';
-import { Bot, botBase, countdown, diffMul, diffSelector, endPanel, makeLanes, ord, preStart } from '@/lib/tecla/views/shared';
+import { Bot, botBase, countdown, diffMul, makeLanes, ord } from '@/lib/tecla/views/shared';
 import { setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
-import { roomBrowser, tabs } from '@/lib/tecla/bits';
 
 /* =========================================================
-   vista: COMPETIR
+   Juegos de competir contra bots (carrera, battle royale, ataque, tira y afloja, desafío diario).
+   Cada juego dibuja su arena dentro de "area" y avisa el final con api.end(resultado);
+   la pantalla previa, las pestañas y el panel del final son de React (components/views/CompeteView).
    ========================================================= */
+export interface EndResult { title: string; lines: string[]; share?: string; daily?: { day: string; wpm: number; acc: number } }
+export interface GameApi { again: () => void; end: (r: EndResult) => void }
 export const Race: any = {
   id: 'race', name: 'carrera', bots: true,
   desc: 'Vos contra tres rivales en el mismo texto. La pista avanza con cada letra correcta y gana quien llega primero.',
-  start(area, again) {
+  start(area, api: GameApi) {
     const seed = rand(), r = rng(seed), words = passage(seed, 34);
     const base = botBase() * diffMul();
     const you = { name: 'vos', you: true, p: 0 };
@@ -38,11 +41,11 @@ export const Race: any = {
       if (!box.done) box.stop();
       const s = box.t0 ? box.stats() : null;
       History.record({ t: 'comp', mode: 'carrera', win: you.place === 1, detail: `${ord(you.place)} de ${racers.length}` + (s ? ` · ${Math.round(s.wpm)} ppm` : ''), pts: [150, 90, 50, 20][you.place - 1] || 0 });
-      endPanel($('.arena', area), { title: you.place === 1 ? '* ganaste la carrera' : `llegaste ${ord(you.place)} de ${racers.length}`, lines: s ? [`${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% de precisión`] : [], again });
+      api.end({ title: you.place === 1 ? '* ganaste la carrera' : `llegaste ${ord(you.place)} de ${racers.length}`, lines: s ? [`${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% de precisión`] : [] });
     };
     const stopCd = countdown(area, () => {
       t0 = now(); step.l = t0; loop = setInterval(step, 100);
-      setConsumer({ char: c => box.char(c), back: x => box.back(x), tab: again });
+      setConsumer({ char: c => box.char(c), back: x => box.back(x), tab: api.again });
       requestAnimationFrame(() => box.refresh());
     });
     return () => { stopCd(); clearInterval(loop); box.stop(); };
@@ -52,7 +55,7 @@ export const Race: any = {
 export const Royale: any = {
   id: 'royale', name: 'battle royale', bots: true,
   desc: 'Diez jugadores escribiendo a la vez. Cada 20 segundos queda afuera quien menos letras correctas escribió en esa ronda. El último en pie gana.',
-  start(area, again) {
+  start(area, api: GameApi) {
     const seed = rand(), r = rng(seed), gen = wordGen(seed, compVocab()), base = botBase() * diffMul(), ROUND = 20;
     const you = { name: 'vos', you: true, rc: 0 };
     const players = [you, ...shuffle(BOT_NAMES, r).slice(0, 9).map((n, i) => ({ name: n, bot: new Bot(n, base * (0.62 + r() * 0.62), r), rc: 0 }))];
@@ -71,7 +74,7 @@ export const Royale: any = {
       over = true; clearInterval(loop); box.stop();
       const s = box.t0 ? box.stats() : null;
       History.record({ t: 'comp', mode: 'battle royale', win: won, detail: `puesto ${ord(you.place)} · ${round - (won ? 0 : 1)} rondas` + (s ? ` · ${Math.round(s.wpm)} ppm` : ''), pts: (round - (won ? 0 : 1)) * 20 + (won ? 200 : 0) });
-      endPanel($('.arena', area), { title: won ? '* sos el último en pie' : `quedaste afuera en el puesto ${ord(you.place)}`, lines: [`sobreviviste ${round - (won ? 0 : 1)} ronda${round - (won ? 0 : 1) === 1 ? '' : 's'}` + (s ? ` · ${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}%` : '')], again });
+      api.end({ title: won ? '* sos el último en pie' : `quedaste afuera en el puesto ${ord(you.place)}`, lines: [`sobreviviste ${round - (won ? 0 : 1)} ronda${round - (won ? 0 : 1) === 1 ? '' : 's'}` + (s ? ` · ${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}%` : '')] });
     };
     const step = () => {
       const t = now(), dt = t - (step.l || t); step.l = t; rt += dt;
@@ -88,7 +91,7 @@ export const Royale: any = {
       render();
     };
     render();
-    const stopCd = countdown(area, () => { step.l = now(); loop = setInterval(step, 100); setConsumer({ char: c => !over && box.char(c), back: x => box.back(x), tab: again }); requestAnimationFrame(() => box.refresh()); });
+    const stopCd = countdown(area, () => { step.l = now(); loop = setInterval(step, 100); setConsumer({ char: c => !over && box.char(c), back: x => box.back(x), tab: api.again }); requestAnimationFrame(() => box.refresh()); });
     return () => { stopCd(); clearInterval(loop); box.stop(); };
   },
 };
@@ -96,7 +99,7 @@ export const Royale: any = {
 export const Attack: any = {
   id: 'attack', name: 'ataque', bots: true,
   desc: 'Uno contra uno. Cada pila recibe palabras nuevas todo el tiempo. Cada 3 palabras seguidas sin errores le mandás una palabra basura al rival. Si tu pila pasa de 12, perdés.',
-  start(area, again) {
+  start(area, api: GameApi) {
     const MAX = 12, seed = rand(), r = rng(seed), gen = wordGen(seed, compVocab()), long = VOCAB.dificil;
     const bot = new Bot(shuffle(BOT_NAMES, r)[0], botBase() * diffMul(), r);
     const garb = () => ({ w: long[Math.floor(r() * long.length)], g: true });
@@ -118,7 +121,7 @@ export const Attack: any = {
       over = true; clearInterval(loop);
       const secs = (now() - t0) / 1000;
       History.record({ t: 'comp', mode: 'ataque', win: won, detail: `${won ? 'ganaste' : 'perdiste'} contra ${bot.name} · ${words} palabras`, pts: (won ? 150 : 30) + words * 2 });
-      endPanel($('.arena', area), { title: won ? `* ${bot.name} se tapó de palabras` : 'tu pila se desbordó', lines: [`${words} palabras en ${Math.round(secs)}s · ${Math.round(keys ? hits / keys * 100 : 100)}% de precisión`], again });
+      api.end({ title: won ? `* ${bot.name} se tapó de palabras` : 'tu pila se desbordó', lines: [`${words} palabras en ${Math.round(secs)}s · ${Math.round(keys ? hits / keys * 100 : 100)}% de precisión`] });
     };
     const consumerObj = {
       char: c => {
@@ -130,7 +133,7 @@ export const Attack: any = {
         } else { combo = 0; cur.classList.remove('shake'); void cur.offsetWidth; cur.classList.add('shake'); }
         render();
       },
-      back: () => { buf = buf.slice(0, -1); render(); }, tab: again,
+      back: () => { buf = buf.slice(0, -1); render(); }, tab: api.again,
     };
     const step = () => {
       const t = now(), dt = t - (step.l || t); step.l = t; st += dt; bt -= dt;
@@ -153,7 +156,7 @@ export const Attack: any = {
 export const Tug: any = {
   id: 'tug', name: 'tira y afloja', bots: true,
   desc: 'Una cuerda en el medio. Cada palabra correcta la tira hacia tu lado y cada palabra del rival hacia el suyo. Gana quien la lleva al borde, o quien vaya adelante a los 90 segundos.',
-  start(area, again) {
+  start(area, api: GameApi) {
     const LIM = 10, TIME = 90, seed = rand(), r = rng(seed), gen = wordGen(seed, compVocab());
     const bot = new Bot(shuffle(BOT_NAMES, r)[0], botBase() * diffMul(), r);
     let pos = 0, bt = 2500, t0 = 0, loop, over = false;
@@ -174,7 +177,7 @@ export const Tug: any = {
       const s = box.t0 ? box.stats() : null;
       const title = pos > 0 ? '* ganaste la cinchada' : pos < 0 ? `ganó ${bot.name}` : 'empate exacto';
       History.record({ t: 'comp', mode: 'tira y afloja', win: pos > 0, detail: (pos > 0 ? 'ganaste' : pos < 0 ? 'perdiste' : 'empate') + ` contra ${bot.name}` + (s ? ` · ${Math.round(s.wpm)} ppm` : ''), pts: pos > 0 ? 120 : pos === 0 ? 50 : 20 });
-      endPanel($('.arena', area), { title, lines: s ? [`${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% de precisión`] : [], again });
+      api.end({ title, lines: s ? [`${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% de precisión`] : [] });
     };
     const box = new TypeBox($('.cmp-box', area), { onWord: ok => { if (ok && !over) { pos++; render(); if (pos >= LIM) finish(); } } });
     box.load(gen(60), { extend: gen });
@@ -185,7 +188,7 @@ export const Tug: any = {
       if ((t - t0) / 1000 >= TIME) finish();
     };
     render();
-    const stopCd = countdown(area, () => { t0 = now(); step.l = t0; loop = setInterval(step, 100); setConsumer({ char: c => !over && box.char(c), back: x => box.back(x), tab: again }); requestAnimationFrame(() => box.refresh()); });
+    const stopCd = countdown(area, () => { t0 = now(); step.l = t0; loop = setInterval(step, 100); setConsumer({ char: c => !over && box.char(c), back: x => box.back(x), tab: api.again }); requestAnimationFrame(() => box.refresh()); });
     return () => { stopCd(); clearInterval(loop); box.stop(); };
   },
 };
@@ -193,7 +196,7 @@ export const Tug: any = {
 export const Daily: any = {
   id: 'daily', name: 'desafío diario', bots: false,
   desc: 'Un texto nuevo cada día, igual para todos. Corrés contra tres fantasmas fijos (bronce, plata y oro) y contra tu mejor intento de hoy. Al terminar podés copiar tu resultado para compartirlo.',
-  start(area, again) {
+  start(area, api: GameApi) {
     const key = todayKey(), seed = +key.replace(/-/g, ''), words = passage(seed, 30);
     const best = store.get('daily:' + key);
     const medals = [{ name: 'fantasma oro', wpm: 95 }, { name: 'fantasma plata', wpm: 70 }, { name: 'fantasma bronce', wpm: 45 }];
@@ -223,57 +226,14 @@ export const Daily: any = {
       const medal = ['sin medalla', 'bronce', 'plata', 'oro'][beaten];
       History.record({ t: 'comp', mode: 'desafío diario', win: beaten === 3, detail: `${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% · ${medal}`, pts: 30 + beaten * 50 });
       const share = `tecla* · diario ${key.split('-').reverse().slice(0, 2).join('/')}\n${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% · ${medal}\n${'🟦'.repeat(beaten)}${'⬜'.repeat(3 - beaten)} racha ${st.n}`;
-      const ta = h('textarea', { rows: '3', readonly: true, hidden: true }); ta.value = share;
-      const btn = h('button', { class: 'btn', text: 'copiar resultado', onclick: () => {
-        const ok = () => { btn.textContent = 'copiado'; setTimeout(() => btn.textContent = 'copiar resultado', 1500); };
-        const fb = () => { ta.hidden = false; ta.select(); btn.textContent = 'seleccionalo y copialo'; };
-        try { navigator.clipboard.writeText(share).then(ok, fb); } catch { fb(); }
-      } });
-      endPanel($('.arena', area), { title: beaten ? `* medalla de ${medal}` : 'sin medalla esta vez', lines: [`${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% de precisión` + (improved && best ? ` · mejoraste tu intento de hoy (${Math.round(best.wpm)})` : ''), `racha de ${st.n} día${st.n === 1 ? '' : 's'} seguidos`], again, extra: h('div', { class: 'row' }, h('pre', { style: 'margin:0;font:inherit;font-size:12.5px;color:var(--sub);white-space:pre-wrap', text: share }), btn, ta) });
-      const board = h('div', { class: 'board' }, h('span', { class: 'lbl', text: 'ranking de hoy' }), h('p', { class: 'hint', text: History.mode === 'cloud' ? 'cargando…' : 'entrá con tu cuenta para aparecer en el ranking del día' }));
-      const ep = $('.endpanel', area); if (ep) ep.insertBefore(board, ep.lastElementChild);
-      if (History.mode === 'cloud') History.submitDaily(key, s.wpm, s.acc).then(() => History.dailyTop(key)).then(rows => {
-        board.replaceChildren(h('span', { class: 'lbl', text: 'ranking de hoy' }), rows.length
-          ? h('ol', {}, ...rows.map(r => h('li', { class: r.user_id === History.user?.id ? 'me' : '' }, h('span', { text: r.display_name || 'alguien' }), h('b', { text: `${Math.round(r.wpm)} ppm` }))))
-          : h('p', { class: 'hint', text: 'todavía no hay resultados' }));
-      });
+      api.end({ title: beaten ? `* medalla de ${medal}` : 'sin medalla esta vez', lines: [`${Math.round(s.wpm)} ppm · ${Math.round(s.acc)}% de precisión` + (improved && best ? ` · mejoraste tu intento de hoy (${Math.round(best.wpm)})` : ''), `racha de ${st.n} día${st.n === 1 ? '' : 's'} seguidos`], share, daily: { day: key, wpm: s.wpm, acc: s.acc } });
     };
     upd();
     loop = setInterval(step, 100);
-    setConsumer({ char: c => !over && box.char(c), back: x => box.back(x), tab: again });
+    setConsumer({ char: c => !over && box.char(c), back: x => box.back(x), tab: api.again });
     requestAnimationFrame(() => box.refresh());
     return () => { clearInterval(loop); box.stop(); };
   },
 };
 
-export const Live: any = {
-  id: 'live', name: 'en vivo', bots: false,
-  desc: 'Jugá con personas reales: carreras, arcade multijugador y juegos de palabras (palabra oculta, sopa de letras, pistas y tutti frutti). Enter abre una carrera rápida.',
-  extra() {
-    const el = h('div', { class: 'rooms-host' });
-    roomBrowser(el, p => nav.go(p));
-    return el;
-  },
-  start(area) {
-    const code = Math.random().toString(36).slice(2, 7);
-    area.replaceChildren(h('p', { class: 'hint', text: 'creando la sala…' }));
-    nav.go('/carrera/' + code);
-    return () => {};
-  },
-};
-
-export const Comp: any = {
-  modes: [Live, Race, Royale, Attack, Tug, Daily], cur: store.get('compMode', 'race'), cleanup: null,
-  init() { this.renderTabs(); },
-  renderTabs() { tabs($('#comp-tabs'), { items: this.modes.map(m => ({ id: m.id, label: m.name })), value: this.cur, onChange: id => this.show(id), label: 'modos de competir' }); },
-  show(id) {
-    this.stopCur(); if (!this.modes.find(m => m.id === id)) id = 'race';
-    this.cur = id; store.set('compMode', id);
-    this.renderTabs();
-    const m = this.modes.find(x => x.id === id), area = $('#comp-area');
-    preStart(area, { title: m.name, desc: m.desc, extra: m.extra ? m.extra() : m.bots ? diffSelector() : '', onStart: () => this.play() });
-  },
-  play() { this.stopCur(); const m = this.modes.find(x => x.id === this.cur); this.cleanup = m.start($('#comp-area'), () => this.play()); },
-  stopCur() { if (this.cleanup) this.cleanup(); this.cleanup = null; },
-  enter() { this.show(this.cur); }, leave() { this.stopCur(); },
-};
+export const MODES = [Race, Royale, Attack, Tug, Daily];

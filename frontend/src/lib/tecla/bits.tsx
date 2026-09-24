@@ -7,7 +7,6 @@ import type { ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import CountUp from '@/components/bits/CountUp';
 import ShinyText from '@/components/bits/ShinyText';
-import RoomBrowser from '@/components/RoomBrowser';
 import Tabs, { type TabItem } from '@/components/ui/Tabs';
 
 const roots = new WeakMap<Element, Root>();
@@ -40,7 +39,3 @@ export function tabs(el: Element | null | undefined, props: { items: TabItem[]; 
   render(el, <Tabs {...props} />);
 }
 
-/** Lista de salas online (competir → en vivo). */
-export function roomBrowser(el: Element | null | undefined, go: (path: string) => void) {
-  render(el, <RoomBrowser go={go} />);
-}
