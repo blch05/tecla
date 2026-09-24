@@ -58,6 +58,7 @@ export default function Header() {
         pillTextColor="var(--sub)"
         hoveredPillTextColor="#FFFFFF"
         ease="power2.easeOut"
+        initialLoadAnimation={false}
       />
       <div className="bars" aria-hidden="true" />
       <ThemeSwitcher />

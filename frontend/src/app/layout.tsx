@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import AppShell from '@/components/AppShell';
 import Header from '@/components/Header';
+import NameGate from '@/components/NameGate';
 import { THEME_BOOT } from '@/lib/theme';
 import './globals.css';
 
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main>{children}</main>
         </div>
         <AppShell />
+        <NameGate />
       </body>
     </html>
   );

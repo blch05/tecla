@@ -10,6 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
 import { closeRoom, publishRoom, roomToken, type RoomGame, seatId } from '@/lib/rooms';
+import Tabs from '@/components/ui/Tabs';
+import { gameTabs } from '@/lib/games';
 import { clampGarbage, decideEnd, pickEliminated, resolveColor, standings as rankStandings } from '@/lib/roomLogic';
 import { newestMetas, RoomMembers, sameMembers } from '@/lib/roomSync';
 
@@ -19,7 +21,7 @@ type Phase = 'lobby' | 'countdown' | 'playing' | 'over';
 
 const GAMES: Record<GameKey, { name: string; mode: 'battle' | 'coop' | 'royale'; desc: string }> = {
   bombas: { name: 'bombas', mode: 'battle', desc: 'Cada uno desactiva sus propias bombas, con la misma semilla para todos. Gana el último que queda con vidas.' },
-  runner: { name: 'runner', mode: 'battle', desc: 'Cada uno corre su carrera de obstáculos. Gana el último en pie.' },
+  runner: { name: 'runner · persecución', mode: 'battle', desc: 'Todos corren la misma pista escapando de la ola: tu tipeo es el motor y ves a los demás arriba. Gana el último en pie.' },
   caen: { name: 'palabras que caen · ataque', mode: 'battle', desc: 'Cada 4 aciertos le mandás palabras basura a un rival al azar. Gana el último en pie.' },
   torre: { name: 'defensa de torre · cooperativo', mode: 'coop', desc: 'Defienden la misma base. Cada bicho tiene el color de un jugador y solo él puede escribir su palabra; los bichos dobles traen una palabra para cada uno de dos jugadores.' },
   royale: { name: 'battle royale de tipeo', mode: 'royale', desc: 'Todos tipean el mismo texto. Cada 20 segundos queda afuera quien menos letras correctas escribió en esa ronda.' },
@@ -351,6 +353,14 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     gameRef.current?.setActivePlayers?.(players.filter(p => inRoster.has(p.id)).map(p => p.id));
   }, [amRoundHost, phase, active, players]);
 
+  // runner: cada uno ve dónde van los demás (los metros llegan en el estado de cada jugador)
+  useEffect(() => {
+    if (phase !== 'playing' || active?.game !== 'runner') return;
+    const inRoster = new Set(active.roster.map(r => r.id));
+    gameRef.current?.setRivals?.(players.filter(p => inRoster.has(p.id) && p.id !== meRef.current?.id && p.round === active.round)
+      .map(p => ({ name: p.name, color: p.color, dist: p.level || 0, alive: p.alive })));
+  }, [phase, active, players]);
+
   /* ---------- acciones ---------- */
   const setCfg = (patch: Partial<Cfg>) => {
     const next = { ...(meRef.current?.cfg as Cfg), ...patch };
@@ -401,7 +411,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
               {isHost ? (
                 <>
                   <span className="lbl">juego</span>
-                  <div className="cfgbar" style={{ alignSelf: 'flex-start' }}>{(Object.keys(GAMES) as GameKey[]).map(k => <button key={k} type="button" className={'opt' + (cfg.game === k ? ' on' : '')} onClick={() => setCfg({ game: k })}>{GAMES[k].name.split(' · ')[0]}</button>)}</div>
+                  <Tabs variant="card" items={gameTabs(Object.keys(GAMES) as GameKey[])} value={cfg.game} onChange={k => setCfg({ game: k as GameKey })} label="juego" />
                   <span className="lbl">dificultad</span>
                   <div className="cfgbar" style={{ alignSelf: 'flex-start' }}>{(Object.keys(DIFFS) as Diff[]).map(k => <button key={k} type="button" className={'opt' + (cfg.diff === k ? ' on' : '')} onClick={() => setCfg({ diff: k })}>{DIFFS[k]}</button>)}</div>
                   <span className="lbl">visibilidad</span>

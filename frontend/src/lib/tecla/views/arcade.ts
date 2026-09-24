@@ -5,6 +5,9 @@ import { focusKb, setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
 import { nav } from '@/lib/tecla/utils';
 import { Sfx } from '@/lib/tecla/sfx';
+import { tabs } from '@/lib/tecla/bits';
+import { gameTabs } from '@/lib/games';
+import { RUNNER_OBS, runnerBack, runnerChar, runnerDraw, runnerStart, runnerUpdate } from '@/lib/tecla/views/runner';
 export { Sfx };
 
 /* =========================================================
@@ -23,8 +26,8 @@ export const ARC: any = {
   },
   runner: {
     name: 'runner',
-    desc: 'Corrés sin parar. Tipeá la palabra de cada obstáculo para saltarlo. Las monedas flotantes son opcionales pero suman mucho. La velocidad sube con cada nivel.',
-    missions: [{ t: 'corré 300 metros', ok: s => s.dist >= 300 }, { t: 'juntá 5 monedas', ok: s => s.coins >= 5 }, { t: 'saltá 20 obstáculos', ok: s => s.jumps >= 20 }],
+    desc: 'Una ola te persigue y tu tipeo es el motor: cada letra correcta del texto de abajo es un paso. Cuando un obstáculo se acerca, escribí la palabra de un carril libre para cambiarte. Tipear parejo sube el ritmo, y cada 500 m elegís un tramo difícil (x2) o uno seguro.',
+    missions: [{ t: 'corré 500 metros', ok: s => s.dist >= 500 }, { t: 'juntá 5 monedas', ok: s => s.coins >= 5 }, { t: 'esquivá 20 obstáculos', ok: s => s.jumps >= 20 }],
   },
   bombas: {
     name: 'bombas',
@@ -54,7 +57,7 @@ export const ADIFF: any = {
 export const DIFF_DESC: any = {
   torre: { facil: '1 camino · palabras cortas', medio: '2 caminos · palabras comunes', dificil: '3 caminos · palabras largas y difíciles' },
   caen: { facil: 'más lento · +2 vidas · palabras cortas', medio: 'velocidad normal · palabras comunes', dificil: 'más rápido · 1 vida menos · palabras largas' },
-  runner: { facil: 'más lento · +2 vidas · palabras cortas', medio: 'velocidad normal · palabras comunes', dificil: 'más rápido · 2 vidas · palabras largas' },
+  runner: { facil: 'ola lenta · +2 vidas · palabras cortas', medio: 'ola normal · palabras comunes', dificil: 'ola rápida · 2 vidas · palabras largas' },
   bombas: { facil: 'mechas largas · +2 vidas · palabras cortas', medio: 'mechas normales · palabras comunes', dificil: 'mechas cortas · 1 vida menos · palabras largas' },
 };
 // caminos del tower defense, en coordenadas relativas; todos terminan en la base
@@ -84,7 +87,7 @@ export class Arcade {
   }
   diffKey() { return this.mp ? this.mp.diff : store.get('arcDiff:' + this.kind, 'medio'); }
   get D() { return ADIFF[this.diffKey()] || ADIFF.medio; }
-  bestKey(k = this.diffKey()) { return 'arc:' + this.kind + (k === 'medio' ? '' : ':' + k); }
+  bestKey(k = this.diffKey()) { return 'arc:' + this.kind + (this.kind === 'runner' ? '-p' : '') + (k === 'medio' ? '' : ':' + k); }
   buildPath() {
     if (!this.W) return;
     const n = this.D.paths, defs = n === 1 ? [TD_PATHS.solo] : n === 2 ? [TD_PATHS.top, TD_PATHS.bot] : [TD_PATHS.top, TD_PATHS.mid, TD_PATHS.bot];
@@ -120,7 +123,8 @@ export class Arcade {
     return h('div', { class: 'diffs' }, ...Object.entries(ADIFF).map(([k, d], i) => h('button', { class: 'btn diff' + (k === cur ? ' on' : ''), type: 'button', onclick: () => this.setDiff(k) },
       h('b', { text: `${i + 1} · ${d.name}` }), h('span', { text: DIFF_DESC[this.kind][k] }), h('small', { text: 'récord ' + store.get(this.bestKey(k), 0) }))));
   }
-  missionsDone() { return store.get('mis:' + this.kind, [false, false, false]); }
+  misKey() { return 'mis:' + this.kind + (this.kind === 'runner' ? '-p' : ''); } // el runner nuevo tiene misiones nuevas
+  missionsDone() { return store.get(this.misKey(), [false, false, false]); }
   missionsEl(fresh) {
     const done = this.missionsDone();
     return h('ul', { class: 'mis' }, ...ARC[this.kind].missions.map((m, i) => h('li', { class: (done[i] ? 'done' : '') + (fresh && fresh[i] ? ' new' : '') }, h('span', { class: 'star', text: done[i] ? '★' : '☆' }), m.t, fresh && fresh[i] ? h('b', { text: ' · ¡nueva!' }) : '')));
@@ -129,7 +133,9 @@ export class Arcade {
   intro() {
     const m = ARC[this.kind];
     this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* — arcade' }), h('h2', { text: m.name }), h('p', { class: 'sub', text: m.desc }),
-      h('div', { class: 'chips', style: 'justify-content:center' }, ...Object.values(POWERS).map(p => h('span', { class: 'chip' }, h('b', { style: 'color:var(--accent)', text: p.g + ' ' }), p.desc))),
+      this.kind === 'runner'
+        ? h('div', { class: 'chips', style: 'justify-content:center' }, ...Object.values(RUNNER_OBS).map(o => h('span', { class: 'chip' }, h('b', { style: 'color:var(--accent)', text: o.name + ' ' }), o.desc)))
+        : h('div', { class: 'chips', style: 'justify-content:center' }, ...Object.values(POWERS).map(p => h('span', { class: 'chip' }, h('b', { style: 'color:var(--accent)', text: p.g + ' ' }), p.desc))),
       h('div', {}, h('span', { class: 'lbl', style: 'margin-bottom:6px', text: 'misiones' }), this.missionsEl()),
       this.diffLine(),
       h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'empezar', onclick: () => this.start() }), h('button', { class: 'btn', text: this.kind === 'torre' ? 'jugar en equipo online' : 'jugar online con amigos', onclick: () => nav.go(`/sala/${Math.random().toString(36).slice(2, 7)}?juego=${this.kind}`) }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' }), ' empezar · ', h('kbd', { text: '1' }), ' ', h('kbd', { text: '2' }), ' ', h('kbd', { text: '3' }), ' dificultad · ', h('kbd', { text: 'tab' }), ' reiniciar · ', h('kbd', { text: 'esc' }), ' pausa · ', h('kbd', { text: '⌫' }), ' soltar objetivo'))));
@@ -148,6 +154,7 @@ export class Arcade {
     this.rand = this.mp ? rng((this.mp.seed ^ this.kind.length * 7919) >>> 0) : Math.random;
     this.nextId = 1; this.lastSnap = 0; this.lastStatus = 0; this.atk = 0; this.killed = new Map();
     this.maxLives = this.lives = Math.max(2, { caen: 5, torre: 10, runner: 3, bombas: 5 }[this.kind] + this.D.lives);
+    if (this.kind === 'runner') runnerStart(this);
     this.buildPath();
     if (this.kind === 'torre') { this.wave = 0; this.frost = 1; this.shock = 0; this.nextWave(); }
     this.ov.hidden = true; this.running = true; this.last = now(); setConsumer(this);
@@ -222,6 +229,8 @@ export class Arcade {
     if (sn.choosing && !this.waitOv) { this.waitOv = true; this.showOv(h('div', { class: 'inner' }, h('h2', { text: 'oleada superada' }), h('p', { class: 'sub', text: 'el anfitrión está eligiendo una mejora…' }))); }
     else if (!sn.choosing && this.waitOv) { this.waitOv = false; this.ov.hidden = true; }
   }
+  /* runner online: posición de los rivales ([{ name, color, dist, alive }]) */
+  setRivals(list) { const prev = new Map((this.rivals || []).map(r => [r.name + r.color, r.shown])); this.rivals = list.map(r => ({ ...r, shown: prev.get(r.name + r.color) })); }
   remoteHit(id) { const e = this.ents.find(o => o.id === id); if (e && !e.done && this.running) this.kill(e, true); }
   stop() { this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); }
   emitFever(on) { if (this._fever === on) return; this._fever = on; window.dispatchEvent(new CustomEvent('tecla:fever', { detail: on })); }
@@ -264,6 +273,7 @@ export class Arcade {
   char(c) {
     if (!this.running) { if (this.mp) return; const i = '123'.indexOf(c); if (i >= 0) this.setDiff(Object.keys(ADIFF)[i]); return; }
     if (this.paused) { if (this.choices) { const i = '123'.indexOf(c); if (i >= 0 && this.choices[i]) this.choose(this.choices[i]); } return; }
+    if (this.kind === 'runner') return runnerChar(this, c);
     if (this.target && !this.ents.includes(this.target)) this.target = null;
     if (!this.target) {
       if (c === ' ') return;
@@ -277,7 +287,7 @@ export class Arcade {
     if (e.word[e.typed] === c) { e.typed++; this.hits++; this.chars++; Sfx.key(); if (e.typed >= e.word.length) this.kill(e); }
     else this.miss();
   }
-  back() { if (this.target) { this.target.typed = 0; this.target = null; } }
+  back() { if (this.kind === 'runner') return runnerBack(this); if (this.target) { this.target.typed = 0; this.target = null; } }
   miss() {
     this.combo = 0; this.flash = 160; Sfx.miss();
     if (this.fever) { this.fever = false; this.float(this.W / 2, this.H * .3, 'fiebre perdida', this.c.sub, 16); }
@@ -319,7 +329,6 @@ export class Arcade {
     Sfx.kill(this.combo);
     this.burst(x, y, e.boss ? 26 : 10, e.coin || e.type === 'gold' ? this.c.gold : undefined);
     if (!this.fever && this.combo >= 10) { this.fever = true; Sfx.fever(); this.float(this.W / 2, this.H * .35, '¡fiebre! puntos x2', this.c.acc, 24); this.shake = 120; }
-    if (this.kind === 'runner') { if (e.coin) { this.coins++; this.float(x, y - 42 * this.sc, '+1 moneda', this.c.gold, 13); } else { this.jump = 1; this.jumps++; } }
     if (this.kind === 'torre') {
       if (e.boss) { this.bosses++; this.shake = 300; this.float(this.W / 2, this.H * .4, '¡jefe derrotado!', this.c.acc, 24); }
       if (this.shock) this.ents.forEach(o => { const [ox, oy] = this.at(Math.max(0, o.d), o.p); if (Math.hypot(ox - x, oy - y) < 90 + this.shock * 30) o.d = Math.max(-20, o.d - 50 * this.sc); });
@@ -419,16 +428,7 @@ export class Arcade {
       for (const e of this.ents.slice()) { e.d += e.v * this.frost * s; if (e.d >= this.paths[e.p || 0].len) { this.remove(e); if (e.link) { if (hitLinks.has(e.link)) continue; hitLinks.add(e.link); this.ents.filter(o => o.link === e.link).forEach(o => this.remove(o)); } this.hurt(e.boss ? 3 : e.link ? 2 : 1, this.base[0], this.base[1]); if (!this.running) return; } }
       if (this.toSpawn === 0 && !this.ents.length && !this.paused && !this.betweenWaves) this.waveDone();
     } else if (this.kind === 'runner') {
-      const speed = (130 + L * 16) * sc * this.D.speed, ground = H * 0.74, px = 70 * sc + 30;
-      this.dist += speed * s / 40; this.jump = Math.max(0, this.jump - dt / 1000 * 2.2); this.coinT -= wdt;
-      if (this.dist >= this.milestone) { this.float(W / 2, H * .3, `${this.milestone} m`, this.c.acc, 22); Sfx.seq([660, 990], 80); this.milestone += 100; }
-      if (this.spawnT <= 0) { this.spawnT = Math.max(950, 2500 - L * 130) * this.D.spawn * (0.8 + this.rand() * 0.5); this.ents.push(this.maybePower({ word: this.pickWord(3, Math.min(9, 4 + Math.floor(L / 2))), typed: 0, x: W + 20, y: ground, hgt: 18 + this.rand() * 22, rock: this.rand() < 0.4 })); }
-      if (this.coinT <= 0) { this.coinT = 3000 + this.rand() * 3500; this.ents.push({ word: this.pickWord(4, 7), typed: 0, x: W + 30, y: ground - (95 + this.rand() * 40) * sc, coin: true }); }
-      for (const e of this.ents.slice()) {
-        e.x -= speed * s;
-        if (e.coin) { if (e.x < -40) this.remove(e); }
-        else if (e.x < px + 10) { this.remove(e); this.hurt(1, px, ground - 20); if (!this.running) return; }
-      }
+      if (runnerUpdate(this, dt, wdt) === false) return;
     } else if (this.kind === 'bombas') {
       const maxB = 2 + Math.floor(L / 2);
       if (this.spawnT <= 0 && this.ents.length < maxB) {
@@ -520,26 +520,7 @@ export class Arcade {
       }
       if (this.banner > 0) { x.globalAlpha = Math.min(1, this.banner / 500); x.fillStyle = this.c.acc; x.font = `800 ${Math.round(26 * sc)}px "Martian Mono", monospace`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(this.boss ? `oleada ${this.wave} · ¡jefe!` : `oleada ${this.wave}`, W / 2, H * .5); x.textAlign = 'left'; x.globalAlpha = 1; }
     } else if (this.kind === 'runner') {
-      const ground = H * 0.74, px = 70 * sc + 30, off = (this.dist * 40) % 26;
-      x.fillStyle = this.c.soft; x.fillRect(0, ground, W, H - ground);
-      x.strokeStyle = this.c.acc2; x.lineWidth = 2; x.setLineDash([14, 12]); x.lineDashOffset = off; x.beginPath(); x.moveTo(0, ground); x.lineTo(W, ground); x.stroke(); x.setLineDash([]); x.lineDashOffset = 0;
-      x.fillStyle = this.c.dim; for (let i = 0; i < 14; i++) { const gx = ((i * 97 - this.dist * 18) % (W + 40) + W + 40) % (W + 40) - 20; x.fillRect(gx, ground + 14 + (i % 3) * 10, 18 + (i % 4) * 8, 2); }
-      x.fillStyle = this.c.soft; x.font = `22px "Martian Mono", monospace`; x.textBaseline = 'middle'; for (let i = 0; i < 6; i++) { const cx = ((i * 190 - this.dist * 6) % (W + 120) + W + 120) % (W + 120) - 60; x.fillText('* — —', cx, H * (.12 + (i % 3) * .08)); }
-      const jy = Math.sin(this.jump * Math.PI) * 50 * sc, py = ground - jy, ph = this.t / 90;
-      x.strokeStyle = this.c.acc; x.fillStyle = this.c.acc; x.lineWidth = 2.6; x.lineCap = 'round';
-      x.beginPath(); x.arc(px, py - 34 * sc, 6.5 * sc, 0, Math.PI * 2); x.fill();
-      x.beginPath(); x.moveTo(px, py - 27 * sc); x.lineTo(px, py - 12 * sc);
-      const lg = this.jump > 0 ? 0.3 : Math.sin(ph), ar = this.jump > 0 ? -1 : Math.cos(ph);
-      x.moveTo(px, py - 12 * sc); x.lineTo(px + lg * 8 * sc, py); x.moveTo(px, py - 12 * sc); x.lineTo(px - lg * 8 * sc, py);
-      x.moveTo(px, py - 23 * sc); x.lineTo(px + ar * 8 * sc, py - 16 * sc); x.moveTo(px, py - 23 * sc); x.lineTo(px - ar * 8 * sc, py - 16 * sc); x.stroke();
-      if (this.fever) { x.globalAlpha = .5; x.strokeStyle = this.c.acc2; for (let i = 1; i <= 3; i++) { x.beginPath(); x.moveTo(px - 12 - i * 9, py - 30 * sc + i * 5); x.lineTo(px - 22 - i * 9, py - 30 * sc + i * 5); x.stroke(); } x.globalAlpha = 1; }
-      for (const e of this.ents) {
-        if (e.coin) { const bob = Math.sin(this.t / 200 + e.x / 50) * 4; x.fillStyle = this.c.gold; x.beginPath(); x.arc(e.x, e.y + bob, 10 * sc, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.font = `800 ${Math.round(12 * sc)}px "Martian Mono", monospace`; x.textAlign = 'center'; x.fillText('*', e.x, e.y + bob + 1); x.textAlign = 'left'; this.word(e, e.x, e.y + bob - 24 * sc); continue; }
-        const hh = e.hgt * sc;
-        if (e.rock) { x.fillStyle = this.c.sub; this.rr(e.x - 12, ground - hh * .8, 24, hh * .8, 8); x.fill(); }
-        else { x.fillStyle = this.c.sub; for (let i = 0; i < 3; i++) x.fillRect(e.x - 7 + i * 6, ground - hh, 3, hh); x.fillRect(e.x - 9, ground - hh, 18, 3); }
-        this.word(e, e.x, ground - hh - 18 * sc);
-      }
+      runnerDraw(this);
     } else if (this.kind === 'bombas') {
       for (const e of this.ents) {
         const r = (e.type === 'mega' ? 32 : 24) * sc, k = e.fuse / e.total, col = e.type === 'gold' ? this.c.gold : k < .3 ? this.c.err : this.c.acc;
@@ -572,7 +553,7 @@ export class Arcade {
   checkMissions() {
     const ms = ARC[this.kind].missions, done = this.missionsDone(); let changed = false;
     ms.forEach((m, i) => { if (!this.runMis[i] && m.ok(this)) { this.runMis[i] = true; if (!done[i]) { done[i] = true; changed = true; this.newMis = this.newMis || []; this.newMis[i] = true; Sfx.mission(); this.float(this.W / 2, this.H * .22, '★ misión: ' + m.t, this.c.acc, 16); } } });
-    if (changed) store.set('mis:' + this.kind, done);
+    if (changed) store.set(this.misKey(), done);
   }
   hud() {
     const set = (id, v) => { const el = $(id); if (el && el.textContent !== String(v)) el.textContent = v; };
@@ -610,11 +591,13 @@ export const Arc: any = {
   cur: store.get('arcMode', 'caen'),
   init() {
     this.game = new Arcade($('#arc-stage'));
-    const tabs = $('#arc-tabs'); tabs.replaceChildren(); Object.entries(ARC).forEach(([k, m]) => tabs.append(h('button', { class: 'opt', 'data-k': k, text: m.name, onclick: () => this.show(k) })));
+    if (process.env.NODE_ENV !== 'production') (window as any).__teclaArc = this; // depuración en desarrollo
+    this.renderTabs();
     const sfx = $('#arc-sfx'), lbl = () => sfx.textContent = Sfx.on ? '♪ sonido sí' : '♪ sonido no';
     lbl(); sfx.onclick = () => { Sfx.on = !Sfx.on; store.set('sfx', Sfx.on); lbl(); if (Sfx.on) { Sfx.init(); Sfx.power(); } focusKb(); };
   },
-  show(k) { this.cur = k; store.set('arcMode', k); $$('#arc-tabs .opt').forEach(b => b.classList.toggle('on', b.dataset.k === k)); this.game.setKind(k); $('#arc-lives').textContent = ''; $('#arc-score').textContent = '0'; },
+  renderTabs() { tabs($('#arc-tabs'), { items: gameTabs(Object.keys(ARC), false), value: this.cur, onChange: k => this.show(k), variant: 'card', label: 'juegos del arcade' }); },
+  show(k) { this.cur = k; store.set('arcMode', k); this.renderTabs(); this.game.setKind(k); $('#arc-lives').textContent = ''; $('#arc-score').textContent = '0'; },
   enter() { this.game.resize(); this.show(this.cur); },
   leave() { this.game?.abandon(); this.game?.destroy(); },
 };

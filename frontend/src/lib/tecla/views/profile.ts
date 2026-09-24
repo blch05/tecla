@@ -49,7 +49,7 @@ export const ProfileView: any = {
       h('div', { class: 'pside' }, h('span', { class: 'chip sync' + (cloud ? ' ok' : ''), text: sync }),
         h('div', { class: 'row' },
           me?.username ? h('button', { class: 'btn ghost', type: 'button', text: 'perfil público', onclick: () => nav.go('/u/' + me.username) }) : '',
-          cloud ? h('button', { class: 'btn ghost', type: 'button', text: this.editing ? 'cerrar' : 'editar', onclick: () => { this.editing = !this.editing; this.editMsg = ''; this.render(); } }) : '',
+          cloud ? h('button', { class: 'btn ghost', type: 'button', text: this.editing ? 'cerrar' : 'cambiar nombre', onclick: () => { this.editing = !this.editing; this.editMsg = ''; this.render(); } }) : '',
           account)));
     let editor: any = '';
     if (cloud && this.editing && me) {
@@ -68,7 +68,7 @@ export const ProfileView: any = {
         h('span', { class: 'eyebrow', text: 'editar perfil' }),
         h('div', { class: 'row' }, h('label', { class: 'lbl', for: 'edit-name', text: 'nombre' }), nameIn, h('label', { class: 'lbl', for: 'edit-user', text: 'usuario' }), userIn,
           h('button', { class: 'btn primary', type: 'button', text: 'guardar', onclick: save })),
-        this.editMsg ? h('p', { class: 'msg err', text: this.editMsg }) : h('p', { class: 'hint', style: 'text-align:left', text: 'el usuario es tu link público: tecla/u/tu-usuario' }));
+        this.editMsg ? h('p', { class: 'msg err', text: this.editMsg }) : h('p', { class: 'hint', style: 'text-align:left', text: 'el nombre se puede repetir con el de otra persona · el usuario es único y es tu link público (tecla/u/tu-usuario)' }));
     }
     const cnt = (t: string) => runs.filter(r => r.t === t);
     const tests = cnt('test'), arc = cnt('arcade'), comp = cnt('comp');

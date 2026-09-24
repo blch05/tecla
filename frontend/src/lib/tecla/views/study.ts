@@ -4,6 +4,7 @@ import { SAMPLE_DOC, STOP } from '@/lib/tecla/data/words';
 import { TypeBox } from '@/lib/tecla/typebox';
 import { blurKb, setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
+import { tabs } from '@/lib/tecla/bits';
 
 /* =========================================================
    vista: ESTUDIAR
@@ -82,7 +83,7 @@ export const Study: any = {
   init() {
     const saved = store.get('doc', null);
     this.setDoc(saved ? saved.text : SAMPLE_DOC, saved ? saved.title : null, false);
-    const tabs = $('#study-tabs'); tabs.replaceChildren(); this.modes.forEach(m => tabs.append(h('button', { class: 'opt', 'data-m': m.id, text: m.name, onclick: () => this.show(m.id) })));
+    this.renderTabs();
     $('#doc-edit').onclick = () => { $('#v-study').classList.add('pasting'); $('#doc-paste').hidden = false; $('#doc-text').value = ''; $('#doc-text').focus(); };
     $('#doc-cancel').onclick = () => { $('#doc-paste').hidden = true; $('#v-study').classList.remove('pasting'); };
     $('#doc-use').onclick = () => { const v = $('#doc-text').value.trim(); if (v.length < 80) return toast('Pegá un texto un poco más largo (al menos un par de párrafos).'); $('#doc-paste').hidden = true; $('#v-study').classList.remove('pasting'); this.setDoc(v, null, true); };
@@ -107,11 +108,12 @@ export const Study: any = {
     $('#doc-kw').replaceChildren(...d.kws.slice(0, 10).map(k => h('span', { class: 'chip', text: k })));
     if (rerender) this.show(this.cur);
   },
+  renderTabs() { tabs($('#study-tabs'), { items: this.modes.map(m => ({ id: m.id, label: m.name })), value: this.cur, onChange: id => this.show(id), label: 'modos de estudio' }); },
   show(id) {
     this.flush(); if (this.cleanup) this.cleanup(); this.cleanup = null;
     if (!this.modes.find(m => m.id === id)) id = 'huecos';
     this.cur = id; store.set('studyMode', id);
-    $$('#study-tabs .opt').forEach(b => b.classList.toggle('on', b.dataset.m === id));
+    this.renderTabs();
     const area = $('#study-area'); area.replaceChildren();
     this.cleanup = ({ copy: studyCopy, huecos: studyHuecos, flash: studyFlash, resumen: studyResumen, dictado: studyDictado })[id](area, this.modes.find(m => m.id === id)) || null;
   },

@@ -1,7 +1,11 @@
 /* salas online: registro en Supabase para que las públicas aparezcan en la lista */
 import { getSupabase } from '@/lib/supabase/client';
 
-export type RoomGame = 'carrera' | 'bombas' | 'runner' | 'caen' | 'torre' | 'royale';
+export type RoomGame = 'carrera' | 'bombas' | 'runner' | 'caen' | 'torre' | 'royale' | SocialGame;
+/** juegos sociales: por turnos o rondas, sin depender de tipear rápido */
+export type SocialGame = 'oculta' | 'sopa' | 'pistas' | 'tutti';
+export const SOCIAL_GAMES: SocialGame[] = ['oculta', 'sopa', 'pistas', 'tutti'];
+export const isSocial = (g: string): g is SocialGame => (SOCIAL_GAMES as string[]).includes(g);
 
 export interface RoomInfo {
   code: string;
@@ -12,16 +16,9 @@ export interface RoomInfo {
   max_players: number;
   status: 'lobby' | 'playing';
   updated_at: string;
+  spicy?: boolean;
 }
 
-export const ROOM_GAMES: Record<RoomGame, { name: string; tag: string }> = {
-  carrera: { name: 'carrera', tag: 'tipeo' },
-  royale: { name: 'battle royale', tag: 'tipeo' },
-  bombas: { name: 'bombas', tag: 'arcade · último en pie' },
-  runner: { name: 'runner', tag: 'arcade · último en pie' },
-  caen: { name: 'palabras que caen', tag: 'arcade · ataque' },
-  torre: { name: 'defensa de torre', tag: 'arcade · cooperativo' },
-};
 
 export const newRoomCode = () => Math.random().toString(36).slice(2, 7);
 export const cleanCode = (c: string) => c.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
@@ -39,12 +36,15 @@ export function roomToken(code: string, inherited?: string | null): string {
   } catch { return inherited || crypto.randomUUID().replace(/-/g, ''); }
 }
 
-export async function publishRoom(r: { code: string; token: string; game: RoomGame; difficulty?: string | null; isPublic: boolean; hostName: string; players: number; status: 'lobby' | 'playing' }) {
+export async function publishRoom(r: { code: string; token: string; game: RoomGame; difficulty?: string | null; isPublic: boolean; hostName: string; players: number; status: 'lobby' | 'playing'; spicy?: boolean }) {
   const sb = getSupabase(); if (!sb) return;
-  await sb.rpc('upsert_room', {
+  const args: Record<string, unknown> = {
     p_code: r.code, p_token: r.token, p_game: r.game, p_difficulty: r.difficulty ?? null, p_public: r.isPublic,
     p_host_name: r.hostName, p_players: r.players, p_status: r.status,
-  });
+  };
+  // p_spicy solo existe desde la migración de juegos sociales: si falta, se publica igual sin la marca
+  if (r.spicy) { const { error } = await sb.rpc('upsert_room', { ...args, p_spicy: true }); if (!error) return; }
+  await sb.rpc('upsert_room', args);
 }
 
 export async function closeRoom(code: string, token: string) {

@@ -1,20 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ROOM_GAMES, cleanCode, findRoom, listRooms, newRoomCode, roomPath, type RoomGame, type RoomInfo } from '@/lib/rooms';
+import { cleanCode, findRoom, isSocial, listRooms, newRoomCode, roomPath, type RoomGame, type RoomInfo } from '@/lib/rooms';
+import { GAME_GROUPS, GAME_INFO, gameTabs } from '@/lib/games';
+import Tabs from '@/components/ui/Tabs';
 
 const DIFFS: Record<string, string> = { facil: 'fácil', medio: 'medio', dificil: 'difícil' };
 
-/* cómo se ve cada juego en el selector: un glifo, cómo se gana y un resumen corto */
-const LOOK: Record<RoomGame, { glyph: string; how: string; blurb: string }> = {
-  carrera: { glyph: '›››', how: 'todos contra todos', blurb: 'mismo texto, gana el primero en terminar' },
-  royale: { glyph: '*|*', how: 'eliminación', blurb: 'cada 20 s queda afuera el más lento' },
-  bombas: { glyph: '(*)', how: 'último en pie', blurb: 'desactivá tus bombas antes de que exploten' },
-  runner: { glyph: '_/‾', how: 'último en pie', blurb: 'saltá los obstáculos escribiendo' },
-  caen: { glyph: '↓↓↓', how: 'ataque', blurb: 'tus aciertos le mandan basura a otro' },
-  torre: { glyph: '[*]', how: 'cooperativo', blurb: 'cada uno escribe las palabras de su color' },
-};
-const ORDER: RoomGame[] = ['carrera', 'royale', 'caen', 'bombas', 'runner', 'torre'];
 const pathOf = (game: RoomGame, code: string) => (game === 'carrera' ? `/carrera/${code}` : `/sala/${code}?juego=${game}`);
 
 /** Lista de salas públicas + crear sala (pública o privada) + entrar con código. */
@@ -23,6 +15,8 @@ export default function RoomBrowser({ go }: { go: (path: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [game, setGame] = useState<RoomGame>('carrera');
   const [isPublic, setIsPublic] = useState(true);
+  const [group, setGroup] = useState('tipeo');
+  const [spicy, setSpicy] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [code, setCode] = useState('');
   const [joinMsg, setJoinMsg] = useState('');
@@ -38,7 +32,8 @@ export default function RoomBrowser({ go }: { go: (path: string) => void }) {
     return () => { alive = false; clearInterval(iv); };
   }, []);
 
-  const create = () => go(roomPath(game, newCode || newRoomCode(), isPublic));
+  const create = () => go(roomPath(game, newCode || newRoomCode(), isPublic) + (isSocial(game) && spicy ? '&picante=1' : ''));
+  const pickGroup = (id: string) => { setGroup(id); setGame(GAME_GROUPS.find(g => g.id === id)!.games[0]); };
   const join = async () => {
     const c = cleanCode(code);
     if (!c) { setJoinMsg('Escribí el código que te pasaron.'); joinRef.current?.focus(); return; }
@@ -69,10 +64,10 @@ export default function RoomBrowser({ go }: { go: (path: string) => void }) {
           const full = r.players >= r.max_players;
           return (
             <button key={r.code} type="button" className="room-row" disabled={full} onClick={() => go(pathOf(r.game, r.code))}>
-              <span className="room-glyph" aria-hidden>{LOOK[r.game]?.glyph || '*'}</span>
+              <span className="room-glyph" aria-hidden>{GAME_INFO[r.game]?.glyph || '*'}</span>
               <span className="room-meta">
-                <b>{ROOM_GAMES[r.game]?.name || r.game}</b>
-                <span>{LOOK[r.game]?.how}{r.difficulty ? ` · ${DIFFS[r.difficulty] || r.difficulty}` : ''} · de {r.host_name}</span>
+                <b>{GAME_INFO[r.game]?.name || r.game}{r.spicy && <span className="spicy-badge">picante</span>}</b>
+                <span>{GAME_INFO[r.game]?.how}{r.difficulty ? ` · ${DIFFS[r.difficulty] || r.difficulty}` : ''} · de {r.host_name}</span>
               </span>
               <span className="room-count">{r.players}<small>/{r.max_players}</small></span>
               <span className={'room-state ' + (r.status === 'playing' ? 'playing' : 'waiting')}>{r.status === 'playing' ? 'jugando' : 'esperando'}</span>
@@ -95,16 +90,15 @@ export default function RoomBrowser({ go }: { go: (path: string) => void }) {
 
       <section className="rooms-create" aria-label="crear una sala">
         <div className="rooms-step"><span className="step-n">1</span><span className="lbl">¿a qué juegan?</span></div>
-        <div className="game-tiles" role="radiogroup" aria-label="juego">
-          {ORDER.map(k => (
-            <button key={k} type="button" role="radio" aria-checked={game === k} className={'game-tile' + (game === k ? ' on' : '')} onClick={() => setGame(k)}>
-              <span className="gt-glyph" aria-hidden>{LOOK[k].glyph}</span>
-              <span className="gt-name">{ROOM_GAMES[k].name}</span>
-              <span className="gt-how">{LOOK[k].how}</span>
-            </button>
-          ))}
-        </div>
-        <p className="gt-blurb"><b>{ROOM_GAMES[game].name}:</b> {LOOK[game].blurb}</p>
+        <Tabs className="game-groups" items={GAME_GROUPS.map(g => ({ id: g.id, label: g.name }))} value={group} onChange={pickGroup} label="tipo de juego" />
+        <Tabs variant="card" items={gameTabs(GAME_GROUPS.find(g => g.id === group)!.games)} value={game} onChange={id => setGame(id as RoomGame)} label="juego" />
+        <p className="gt-blurb"><b>{GAME_INFO[game]?.name}:</b> {GAME_INFO[game]?.blurb}</p>
+        {isSocial(game) && (
+          <label className="spicy-toggle">
+            <input type="checkbox" checked={spicy} onChange={e => setSpicy(e.target.checked)} />
+            <span><b>modo picante</b> · palabras subidas de tono (+18)</span>
+          </label>
+        )}
 
         <div className="rooms-step"><span className="step-n">2</span><span className="lbl">¿quién puede entrar?</span></div>
         <div className="vis-toggle" role="radiogroup" aria-label="visibilidad">
@@ -117,7 +111,7 @@ export default function RoomBrowser({ go }: { go: (path: string) => void }) {
         </div>
 
         <div className="create-cta">
-          <button className="btn primary big" type="button" onClick={create}>crear sala de {ROOM_GAMES[game].name} →</button>
+          <button className="btn primary big" type="button" onClick={create}>crear sala de {GAME_INFO[game]?.name} →</button>
           <span className="code-preview" title="el código de tu sala">
             código <b>{newCode || '·····'}</b>
             <button type="button" className="reroll" aria-label="otro código" title="otro código" onClick={() => setNewCode(newRoomCode())}>↻</button>

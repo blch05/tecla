@@ -5,7 +5,7 @@ import { TypeBox } from '@/lib/tecla/typebox';
 import { Bot, botBase, countdown, diffMul, diffSelector, endPanel, makeLanes, ord, preStart } from '@/lib/tecla/views/shared';
 import { setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
-import { roomBrowser } from '@/lib/tecla/bits';
+import { roomBrowser, tabs } from '@/lib/tecla/bits';
 
 /* =========================================================
    vista: COMPETIR
@@ -248,7 +248,7 @@ export const Daily: any = {
 
 export const Live: any = {
   id: 'live', name: 'en vivo', bots: false,
-  desc: 'Jugá contra personas reales: carreras, battle royale y el arcade multijugador. Unite a una sala pública o creá la tuya, pública o privada. Con «empezar» abrís una carrera rápida.',
+  desc: 'Jugá con personas reales: carreras, arcade multijugador y juegos de palabras (palabra oculta, sopa de letras, pistas y tutti frutti). Enter abre una carrera rápida.',
   extra() {
     const el = h('div', { class: 'rooms-host' });
     roomBrowser(el, p => nav.go(p));
@@ -264,14 +264,12 @@ export const Live: any = {
 
 export const Comp: any = {
   modes: [Live, Race, Royale, Attack, Tug, Daily], cur: store.get('compMode', 'race'), cleanup: null,
-  init() {
-    const tabs = $('#comp-tabs'); tabs.replaceChildren();
-    this.modes.forEach(m => tabs.append(h('button', { class: 'opt', 'data-m': m.id, text: m.name, onclick: () => this.show(m.id) })));
-  },
+  init() { this.renderTabs(); },
+  renderTabs() { tabs($('#comp-tabs'), { items: this.modes.map(m => ({ id: m.id, label: m.name })), value: this.cur, onChange: id => this.show(id), label: 'modos de competir' }); },
   show(id) {
     this.stopCur(); if (!this.modes.find(m => m.id === id)) id = 'race';
     this.cur = id; store.set('compMode', id);
-    $$('#comp-tabs .opt').forEach(b => b.classList.toggle('on', b.dataset.m === id));
+    this.renderTabs();
     const m = this.modes.find(x => x.id === id), area = $('#comp-area');
     preStart(area, { title: m.name, desc: m.desc, extra: m.extra ? m.extra() : m.bots ? diffSelector() : '', onStart: () => this.play() });
   },
