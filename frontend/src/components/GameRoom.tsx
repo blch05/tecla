@@ -11,6 +11,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
 import { closeRoom, publishRoom, roomToken, type RoomGame, seatId } from '@/lib/rooms';
 import Tabs from '@/components/ui/Tabs';
+import ArcadeOverlay, { type OverlaySpec } from '@/components/views/arcade/ArcadeOverlay';
 import { gameTabs } from '@/lib/games';
 import { clampGarbage, decideEnd, pickEliminated, resolveColor, standings as rankStandings } from '@/lib/roomLogic';
 import { newestMetas, RoomMembers, sameMembers } from '@/lib/roomSync';
@@ -76,6 +77,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [spectating, setSpectating] = useState(false);
+  const [ovSpec, setOvSpec] = useState<OverlaySpec | null>(null); // avisos del juego (ganaste, quedaste afuera…)
 
   // depuración en desarrollo: window.__teclaRoom
   if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') (window as any).__teclaRoom = { meRef, playersRef, gameRef, chRef };
@@ -188,7 +190,8 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     }
 
     const { Arcade } = await import('@/lib/tecla/views/arcade');
-    const g = new Arcade(stageRef.current!);
+    setOvSpec(null);
+    const g = new Arcade(stageRef.current!, { overlay: (sp: OverlaySpec | null) => setOvSpec(sp ? { ...sp } : null) });
     gameRef.current = g;
     g.kind = p.game; g.colors(); g.resize();
     const hostNow = roundHostRef.current === meRef.current?.id;
@@ -431,7 +434,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
             <div className="room-play">
               {phase === 'countdown' && <div className="count">{count}</div>}
               {spectating && phase === 'playing' && <p className="hint">Llegaste con la ronda empezada: mirás esta y jugás la próxima.</p>}
-              <div className="stage-wrap" hidden={!isArcade}><div className="stage" ref={stageRef}><canvas /><div className="ov" /></div></div>
+              <div className="stage-wrap" hidden={!isArcade}><div className="stage" ref={stageRef}><canvas /><ArcadeOverlay game={gameRef.current} spec={ovSpec} /></div></div>
               <div hidden={active?.game !== 'royale'} className="room-royale">
                 <div ref={boxRef} />
                 {active?.game === 'royale' && phase === 'playing' && me?.alive && <p className="hint">ronda de 20 s · letras correctas en esta ronda: <b>{me.rc || 0}</b></p>}

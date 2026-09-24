@@ -20,15 +20,15 @@ export default function AppShell() {
       import('@/lib/tecla/decor'),
       import('@/lib/tecla/history'),
       import('@/lib/tecla/keystats'),
-      import('@/lib/tecla/views/arcade'),
-    ]).then(([input, utils, decor, history, keystats, arcade]) => {
+    ]).then(([input, utils, decor, history, keystats]) => {
       if (kbRef.current) input.initInput(kbRef.current);
       utils.nav.go = (p: string) => router.push(p);
       decor.decorate();
       history.History.init();
       // al cerrar o esconder la pestaña: guardar lo que haya en curso
-      const onHide = () => { keystats.saveKS(); arcade.Arc.game?.abandon(); }; // estudiar guarda su sesión por su cuenta
-      const onVis = () => { if (document.hidden) { keystats.saveKS(); if (arcade.Arc.game?.running) arcade.Arc.game.esc(); } };
+      // el arcade y estudiar guardan lo suyo por su cuenta (ArcadeView, StudyView)
+      const onHide = () => keystats.saveKS();
+      const onVis = () => { if (document.hidden) keystats.saveKS(); };
       window.addEventListener('pagehide', onHide);
       document.addEventListener('visibilitychange', onVis);
       off = () => { window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onVis); };

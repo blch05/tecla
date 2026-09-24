@@ -6,7 +6,7 @@ import { cssColor } from '@/lib/theme';
 
 /** Escenario del arcade. En modo fiebre aparece un borde eléctrico (React Bits) encima,
     sin tocar el canvas del juego. */
-export default function ArcadeStage() {
+export default function ArcadeStage({ stageRef, children }: { stageRef?: React.Ref<HTMLDivElement>; children?: React.ReactNode }) {
   const [fever, setFever] = useState(false);
   const [color, setColor] = useState('#34A3F0');
 
@@ -22,7 +22,7 @@ export default function ArcadeStage() {
 
   return (
     <div className="stage-wrap">
-      <div className="stage" id="arc-stage"><canvas /><div className="ov" /></div>
+      <div className="stage" id="arc-stage" ref={stageRef}><canvas />{children}</div>
       {fever && (
         <div className="fever-fx" aria-hidden="true">
           <ElectricBorder color={color} speed={1.3} chaos={0.14} borderRadius={14}>

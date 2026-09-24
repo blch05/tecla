@@ -1,14 +1,12 @@
 // @ts-nocheck — módulo portado del prototipo; pendiente de tipar (ver README)
-import { $, $$, clamp, h, now, rng, shuffle, store, toast } from '@/lib/tecla/utils';
+import { $, clamp, now, rng, shuffle, store, toast } from '@/lib/tecla/utils';
 import { SENTENCES, VOCAB } from '@/lib/tecla/data/words';
 import { focusKb, setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
-import { nav } from '@/lib/tecla/utils';
 import { Sfx } from '@/lib/tecla/sfx';
-import { tabs } from '@/lib/tecla/bits';
-import { gameTabs } from '@/lib/games';
-import { RUNNER_OBS, runnerBack, runnerChar, runnerDraw, runnerStart, runnerUpdate } from '@/lib/tecla/views/runner';
+import { runnerBack, runnerChar, runnerDraw, runnerStart, runnerUpdate } from '@/lib/tecla/views/runner';
 export { Sfx };
+export { RUNNER_OBS } from '@/lib/tecla/views/runner';
 
 /* =========================================================
    vista: ARCADE (canvas)
@@ -71,8 +69,9 @@ export const TD_PATHS: any = {
 
 export class Arcade {
   [key: string]: any;
-  constructor(stage) {
-    this.stage = stage; this.cv = $('canvas', stage); this.ctx = this.cv.getContext('2d'); this.ov = $('.ov', stage);
+  /* ui = { overlay(spec | null), hud(estado), changed() }: la interfaz la dibuja React (components/views/arcade) */
+  constructor(stage, ui = {}) {
+    this.stage = stage; this.ui = ui; this.cv = $('canvas', stage); this.ctx = this.cv.getContext('2d');
     this.kind = 'caen'; this.running = false; this.ents = []; this.fx = []; this.floats = []; this.lasers = [];
     stage.addEventListener('mousedown', e => { if (e.target === this.cv) { e.preventDefault(); focusKb(); } });
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(stage);
@@ -101,12 +100,7 @@ export class Arcade {
   at(d, p = 0) { const path = this.paths[p] || this.paths[0]; for (const s of path.segs) if (d <= s.s + s.l) { const k = (d - s.s) / s.l; return [s.x1 + (s.x2 - s.x1) * k, s.y1 + (s.y2 - s.y1) * k]; } return this.base; }
   prog(e) { return e.d / (this.paths[e.p || 0] || this.paths[0]).len; }
   setDiff(k) { this.abandon(); store.set('arcDiff:' + this.kind, k); this.buildPath(); this.hudReset(); this.drawBg(); this.intro(); }
-  diffBar() {
-    const cur = this.diffKey(), bar = $('#arc-diff'); if (!bar) return;
-    bar.replaceChildren(h('span', { class: 'lbl', style: 'margin-right:4px', text: 'dificultad' }), ...Object.entries(ADIFF).map(([k, d], i) => h('button', { class: 'opt' + (k === cur ? ' on' : ''), type: 'button', title: 'tecla ' + (i + 1), text: d.name, onclick: () => this.setDiff(k) })));
-    $('#arc-diff-desc').textContent = `${DIFF_DESC[this.kind][cur]} · puntos ×${String(this.D.pts).replace('.', ',')} · récord ${store.get(this.bestKey(), 0)}`;
-  }
-  diffLine() { return h('p', { class: 'hint', text: `dificultad ${this.D.name}: ${DIFF_DESC[this.kind][this.diffKey()]} · cambiala arriba o con 1, 2 y 3` }); }
+  diffBar() { this.ui.changed?.(); }
   recordRun(fin) {
     if (this.saved || !this.t) return; this.saved = true;
     if (!fin && this.score <= 0) return;
@@ -118,31 +112,13 @@ export class Arcade {
     if (!fin) toast(`partida guardada: ${this.score} puntos`);
   }
   abandon() { if (this.running) this.recordRun(false); this.stop(); }
-  diffRow() {
-    const cur = this.diffKey();
-    return h('div', { class: 'diffs' }, ...Object.entries(ADIFF).map(([k, d], i) => h('button', { class: 'btn diff' + (k === cur ? ' on' : ''), type: 'button', onclick: () => this.setDiff(k) },
-      h('b', { text: `${i + 1} · ${d.name}` }), h('span', { text: DIFF_DESC[this.kind][k] }), h('small', { text: 'récord ' + store.get(this.bestKey(k), 0) }))));
-  }
   misKey() { return 'mis:' + this.kind + (this.kind === 'runner' ? '-p' : ''); } // el runner nuevo tiene misiones nuevas
   missionsDone() { return store.get(this.misKey(), [false, false, false]); }
-  missionsEl(fresh) {
-    const done = this.missionsDone();
-    return h('ul', { class: 'mis' }, ...ARC[this.kind].missions.map((m, i) => h('li', { class: (done[i] ? 'done' : '') + (fresh && fresh[i] ? ' new' : '') }, h('span', { class: 'star', text: done[i] ? '★' : '☆' }), m.t, fresh && fresh[i] ? h('b', { text: ' · ¡nueva!' }) : '')));
-  }
   setKind(k) { this.abandon(); this.kind = k; this.colors(); this.drawBg(); this.hudReset(); this.intro(); }
-  intro() {
-    const m = ARC[this.kind];
-    this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* — arcade' }), h('h2', { text: m.name }), h('p', { class: 'sub', text: m.desc }),
-      this.kind === 'runner'
-        ? h('div', { class: 'chips', style: 'justify-content:center' }, ...Object.values(RUNNER_OBS).map(o => h('span', { class: 'chip' }, h('b', { style: 'color:var(--accent)', text: o.name + ' ' }), o.desc)))
-        : h('div', { class: 'chips', style: 'justify-content:center' }, ...Object.values(POWERS).map(p => h('span', { class: 'chip' }, h('b', { style: 'color:var(--accent)', text: p.g + ' ' }), p.desc))),
-      h('div', {}, h('span', { class: 'lbl', style: 'margin-bottom:6px', text: 'misiones' }), this.missionsEl()),
-      this.diffLine(),
-      h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'empezar', onclick: () => this.start() }), h('button', { class: 'btn', text: this.kind === 'torre' ? 'jugar en equipo online' : 'jugar online con amigos', onclick: () => nav.go(`/sala/${Math.random().toString(36).slice(2, 7)}?juego=${this.kind}`) }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' }), ' empezar · ', h('kbd', { text: '1' }), ' ', h('kbd', { text: '2' }), ' ', h('kbd', { text: '3' }), ' dificultad · ', h('kbd', { text: 'tab' }), ' reiniciar · ', h('kbd', { text: 'esc' }), ' pausa · ', h('kbd', { text: '⌫' }), ' soltar objetivo'))));
-    setConsumer(this);
-  }
-  showOv(content) { this.ov.replaceChildren(content); this.ov.hidden = false; }
-  hudReset() { this.diffBar(); $('#arc-best').textContent = store.get(this.bestKey(), 0); $('#arc-lvl-l').textContent = this.kind === 'torre' ? 'oleada' : this.kind === 'runner' ? 'metros' : 'nivel'; $('#arc-combo').textContent = 'x0'; }
+  intro() { this.show({ kind: 'intro' }); setConsumer(this); }
+  show(spec) { this.overlay = spec; this.ui.overlay?.(spec); }
+  hideOv() { this.overlay = null; this.ui.overlay?.(null); }
+  hudReset() { this.lastHud = ''; this.ui.changed?.(); this.hud(true); }
   start() {
     if (this.running) this.recordRun(false);
     this.stop(); this.colors(); Sfx.init();
@@ -157,7 +133,7 @@ export class Arcade {
     if (this.kind === 'runner') runnerStart(this);
     this.buildPath();
     if (this.kind === 'torre') { this.wave = 0; this.frost = 1; this.shock = 0; this.nextWave(); }
-    this.ov.hidden = true; this.running = true; this.last = now(); setConsumer(this);
+    this.hideOv(); this.running = true; this.last = now(); setConsumer(this);
     this.raf = requestAnimationFrame(t => this.frame(t));
   }
   /* ---------- multijugador ----------
@@ -208,9 +184,9 @@ export class Arcade {
     this.float(this.W / 2, this.H * .2, n > 1 ? `¡te mandaron ${n} palabras!` : '¡te mandaron basura!', this.c.err, 18); Sfx.miss();
   }
   winMp() { if (!this.running) return; this.recordRun(true); this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); Sfx.mission();
-    this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* sala online' }), h('h2', { text: '¡ganaste!' }), h('p', { class: 'sub', text: `${this.score} puntos · último en pie` }))); }
+    this.show({ kind: 'mpWin', score: this.score }); }
   endRemote(sum) { this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); this.draw();
-    this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* sala online' }), h('h2', { text: sum && sum.coop ? 'la base cayó' : 'fin de la ronda' }), h('p', { class: 'sub', text: sum && sum.coop ? `${sum.score} puntos en equipo · oleada ${sum.wave}` : '' }))); }
+    this.show({ kind: 'mpEnd', coop: !!(sum && sum.coop), score: sum?.score || 0, wave: sum?.wave || 0 }); }
   snapshot() {
     return { lives: this.lives, wave: this.wave, score: this.score, banner: Math.round(this.banner || 0), boss: this.boss, frost: this.frost, choosing: !!this.choices, turret: this.turret,
       ents: this.ents.map(e => ({ id: e.id, w: e.word, d: Math.round(e.d * 10) / 10, p: e.p, v: e.v, type: e.type, boss: !!e.boss, link: e.link || 0, part: e.part || 0, owner: e.owner || null, color: e.color || null, done: !!e.done, stage: e.stage || 0, pw: e.pw || null })) };
@@ -226,8 +202,8 @@ export class Arcade {
       next.push(e);
     }
     this.ents = next; if (this.target && !next.includes(this.target)) this.target = null;
-    if (sn.choosing && !this.waitOv) { this.waitOv = true; this.showOv(h('div', { class: 'inner' }, h('h2', { text: 'oleada superada' }), h('p', { class: 'sub', text: 'el anfitrión está eligiendo una mejora…' }))); }
-    else if (!sn.choosing && this.waitOv) { this.waitOv = false; this.ov.hidden = true; }
+    if (sn.choosing && !this.waitOv) { this.waitOv = true; this.show({ kind: 'wait' }); }
+    else if (!sn.choosing && this.waitOv) { this.waitOv = false; this.hideOv(); }
   }
   /* runner online: posición de los rivales ([{ name, color, dist, alive }]) */
   setRivals(list) { const prev = new Map((this.rivals || []).map(r => [r.name + r.color, r.shown])); this.rivals = list.map(r => ({ ...r, shown: prev.get(r.name + r.color) })); }
@@ -237,8 +213,8 @@ export class Arcade {
   destroy() { this.stop(); this.ro?.disconnect(); }
   enter() { if (this.mp) return; if (!this.running) this.start(); else if (this.userPaused) this.resume(); }
   tab() { if (this.mp) return; this.start(); }
-  esc() { if (this.mp) return; if (this.running && !this.choices && !this.userPaused) { this.userPaused = this.paused = true; this.showOv(h('div', { class: 'inner' }, h('h2', { text: 'pausa' }), h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'seguir', onclick: () => this.resume() }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' }))))); } }
-  resume() { this.userPaused = this.paused = false; this.ov.hidden = true; this.last = now(); focusKb(); }
+  esc() { if (this.mp) return; if (this.running && !this.choices && !this.userPaused) { this.userPaused = this.paused = true; this.show({ kind: 'pause' }); } }
+  resume() { this.userPaused = this.paused = false; this.hideOv(); this.last = now(); focusKb(); }
   frame(t) {
     if (!this.running) return;
     const dt = Math.min(50, t - this.last); this.last = t;
@@ -360,7 +336,7 @@ export class Arcade {
   nextWave() { this.wave++; this.toSpawn = Math.round((4 + this.wave * 2) * this.D.count); this.boss = this.wave % 5 === 0; this.spawnT = 1500; this.banner = 1600; this.waveHurt = false; }
   choose(u) {
     if (u.id === 'frost') this.frost *= 0.85; else if (u.id === 'wall') { this.lives += 3; this.maxLives += 3; } else if (u.id === 'shock') this.shock++; else if (u.id === 'turret') { this.turret++; this.turretT = 1500; } else this.mult *= 1.25;
-    this.choices = null; this.paused = false; this.ov.hidden = true; this.last = now(); this.nextWave(); focusKb();
+    this.choices = null; this.paused = false; this.hideOv(); this.last = now(); this.nextWave(); focusKb();
   }
   waveDone() {
     let bonus = this.wave * 40; this.cleared++;
@@ -372,9 +348,7 @@ export class Arcade {
   }
   offerUpgrades() {
     this.betweenWaves = false; this.paused = true; this.choices = shuffle(UPGRADES).slice(0, 3);
-    this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: `* oleada ${this.wave} superada` }), h('h2', { text: 'elegí una mejora' }),
-      h('div', { class: 'ups' }, ...this.choices.map((u, i) => h('button', { class: 'btn up', onclick: () => this.choose(u) }, h('b', { text: `${i + 1} · ${u.name}` + (u.id === 'turret' && this.turret ? ` (nivel ${this.turret + 1})` : '') }), h('span', { text: u.desc })))),
-      h('p', { class: 'hint', text: 'tocá 1, 2 o 3' })));
+    this.show({ kind: 'upgrades' });
   }
   update(dt) {
     const W = this.W, H = this.H, sc = this.sc, L = this.level;
@@ -555,15 +529,21 @@ export class Arcade {
     ms.forEach((m, i) => { if (!this.runMis[i] && m.ok(this)) { this.runMis[i] = true; if (!done[i]) { done[i] = true; changed = true; this.newMis = this.newMis || []; this.newMis[i] = true; Sfx.mission(); this.float(this.W / 2, this.H * .22, '★ misión: ' + m.t, this.c.acc, 16); } } });
     if (changed) store.set(this.misKey(), done);
   }
-  hud() {
-    const set = (id, v) => { const el = $(id); if (el && el.textContent !== String(v)) el.textContent = v; };
-    set('#arc-score', this.score);
-    set('#arc-level', this.kind === 'torre' ? this.wave : this.kind === 'runner' ? Math.round(this.dist) : this.level);
-    set('#arc-lives', this.lives > 8 ? `* ×${this.lives}` : '* '.repeat(this.lives).trim() || '—');
-    set('#arc-wpm', this.t > 1000 ? Math.round(this.chars / 5 / (this.t / 60000)) : 0);
-    set('#arc-acc', (this.keys ? Math.round(this.hits / this.keys * 100) : 100) + '%');
-    set('#arc-combo', 'x' + this.combo + (this.fever ? ' · fiebre' : ''));
-    $('#arc-combo')?.classList.toggle('hot', this.fever);
+  hudState() {
+    return {
+      score: this.score || 0,
+      levelLabel: this.kind === 'torre' ? 'oleada' : this.kind === 'runner' ? 'metros' : 'nivel',
+      level: this.kind === 'torre' ? this.wave || 0 : this.kind === 'runner' ? Math.round(this.dist || 0) : this.level || 1,
+      lives: this.running || this.t ? (this.lives > 8 ? `* ×${this.lives}` : '* '.repeat(Math.max(0, this.lives || 0)).trim() || '—') : '',
+      wpm: this.t > 1000 ? Math.round(this.chars / 5 / (this.t / 60000)) : 0,
+      acc: (this.keys ? Math.round(this.hits / this.keys * 100) : 100) + '%',
+      combo: 'x' + (this.combo || 0) + (this.fever ? ' · fiebre' : ''), hot: !!this.fever,
+      best: Math.max(store.get(this.bestKey(), 0), this.overBest || 0),
+    };
+  }
+  hud(force = false) {
+    const st = this.hudState(), key = JSON.stringify(st);
+    if (force || key !== this.lastHud) { this.lastHud = key; this.ui.hud?.(st); }
     if (this.running && !this.mp) this.checkMissions();
     this.emitFever(!!(this.running && this.fever));
   }
@@ -572,32 +552,14 @@ export class Arcade {
       this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); this.draw(); Sfx.over(); this.recordRun(true);
       this.mp.onStatus?.({ lives: 0, score: this.score, level: this.kind === 'torre' ? this.wave : this.kind === 'runner' ? Math.round(this.dist) : this.level, alive: false });
       if (this.mp.coop) { this.mp.onEnd?.({ coop: true, score: this.score, wave: this.wave }); this.endRemote({ coop: true, score: this.score, wave: this.wave }); }
-      else { this.mp.onDead?.({ score: this.score }); this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: '* sala online' }), h('h2', { text: 'quedaste afuera' }), h('p', { class: 'sub', text: `${this.score} puntos · mirá cómo sigue la ronda` }))); }
+      else { this.mp.onDead?.({ score: this.score }); this.show({ kind: 'mpOut', score: this.score }); }
       return;
     }
     this.running = false; cancelAnimationFrame(this.raf); this.checkMissions(); this.draw(); this.hud(); Sfx.over();
-    const best = store.get(this.bestKey(), 0), rec = this.score > best; this.recordRun(true); this.diffBar();
-    const bestEl = $('#arc-best'); if (bestEl) bestEl.textContent = Math.max(best, this.score);
+    const best = store.get(this.bestKey(), 0), rec = this.score > best; this.recordRun(true); this.overBest = Math.max(best, this.score); this.hud(true); this.diffBar();
     const where = this.kind === 'torre' ? `llegaste a la oleada ${this.wave}` : this.kind === 'runner' ? `corriste ${Math.round(this.dist)} metros · ${this.coins} monedas` : `llegaste al nivel ${this.level}`;
     const fresh = this.newMis; this.newMis = null;
-    this.showOv(h('div', { class: 'inner' }, h('span', { class: 'eyebrow', text: (rec ? '* nuevo récord' : '* fin del juego') + ' · ' + this.D.name }), h('h2', { text: `${this.score} puntos` }),
-      h('p', { class: 'sub', text: `${where} · ${this.kills} palabras · combo máximo ${this.maxCombo} · ${Math.round(this.t > 1000 ? this.chars / 5 / (this.t / 60000) : 0)} ppm · ${this.keys ? Math.round(this.hits / this.keys * 100) : 100}% precisión` }),
-      h('div', {}, h('span', { class: 'lbl', style: 'margin-bottom:6px', text: 'misiones' }), this.missionsEl(fresh)),
-      h('p', { class: 'hint', text: 'guardado en tu perfil · ' + (History.mode === 'cloud' ? 'en tu cuenta' : 'en este navegador') }),
-      h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', text: 'otra vez', onclick: () => this.start() }), h('span', { class: 'hint' }, h('kbd', { text: 'enter' })))));
+    this.show({ kind: 'over', rec, where, fresh, cloud: History.mode === 'cloud',
+      stats: `${this.kills} palabras · combo máximo ${this.maxCombo} · ${Math.round(this.t > 1000 ? this.chars / 5 / (this.t / 60000) : 0)} ppm · ${this.keys ? Math.round(this.hits / this.keys * 100) : 100}% precisión` });
   }
 }
-export const Arc: any = {
-  cur: store.get('arcMode', 'caen'),
-  init() {
-    this.game = new Arcade($('#arc-stage'));
-    if (process.env.NODE_ENV !== 'production') (window as any).__teclaArc = this; // depuración en desarrollo
-    this.renderTabs();
-    const sfx = $('#arc-sfx'), lbl = () => sfx.textContent = Sfx.on ? '♪ sonido sí' : '♪ sonido no';
-    lbl(); sfx.onclick = () => { Sfx.on = !Sfx.on; store.set('sfx', Sfx.on); lbl(); if (Sfx.on) { Sfx.init(); Sfx.power(); } focusKb(); };
-  },
-  renderTabs() { tabs($('#arc-tabs'), { items: gameTabs(Object.keys(ARC), false), value: this.cur, onChange: k => this.show(k), variant: 'card', label: 'juegos del arcade' }); },
-  show(k) { this.cur = k; store.set('arcMode', k); this.renderTabs(); this.game.setKind(k); $('#arc-lives').textContent = ''; $('#arc-score').textContent = '0'; },
-  enter() { this.game.resize(); this.show(this.cur); },
-  leave() { this.game?.abandon(); this.game?.destroy(); },
-};
