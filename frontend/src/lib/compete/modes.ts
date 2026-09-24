@@ -103,7 +103,7 @@ export const Attack: any = {
     const MAX = 12, seed = rand(), r = rng(seed), gen = wordGen(seed, compVocab()), long = VOCAB.dificil;
     const bot = new Bot(shuffle(BOT_NAMES, r)[0], botBase() * diffMul(), r);
     const garb = () => ({ w: long[Math.floor(r() * long.length)], g: true });
-    let mine = gen(5).map(w => ({ w })), theirs = gen(5).map(w => ({ w })), buf = '', combo = 0, bcombo = 0, spawn = 2600, st = 0, bt = 1200, keys = 0, hits = 0, words = 0, t0 = 0, loop, over = false;
+    let badC = '', badUntil = 0, mine = gen(5).map(w => ({ w })), theirs = gen(5).map(w => ({ w })), buf = '', combo = 0, bcombo = 0, spawn = 2600, st = 0, bt = 1200, keys = 0, hits = 0, words = 0, t0 = 0, loop, over = false;
     const col = (title) => { const meter = h('div', { class: 'meter' }), wl = h('div', { class: 'wl' }); for (let i = 0; i < MAX; i++) meter.append(h('i')); return { el: h('div', { class: 'stack' }, h('h4', { text: title }), meter, wl), meter, wl }; };
     const A = col('tu pila'), B = col(bot.name), cur = h('div', { class: 'curw' }), comboEl = h('div', { class: 'combo' });
     area.replaceChildren(h('div', { class: 'arena' }, h('div', { class: 'atk' }, A.el, h('div', { class: 'mid' }, cur, comboEl), B.el)));
@@ -114,7 +114,9 @@ export const Attack: any = {
     const render = () => {
       paint(A, mine, true); paint(B, theirs, false);
       const c = mine[0];
-      cur.replaceChildren(c ? h('span', { class: 't', text: buf }) : '', c ? h('span', { class: 'r', text: c.w.slice(buf.length) }) : h('span', { class: 'r', text: '…' }));
+      // la tecla errada se ve tachada un momento, en el lugar de la letra que iba
+      const bad = badC && now() < badUntil ? badC : '';
+      cur.replaceChildren(c ? h('span', { class: 't', text: buf }) : '', bad && c ? h('span', { class: 'bad', text: bad }) : '', c ? h('span', { class: 'r', text: c.w.slice(buf.length + (bad ? 1 : 0)) }) : h('span', { class: 'r', text: '…' }));
       comboEl.textContent = `racha ${combo % 3}/3 · ${words} palabras`;
     };
     const finish = won => {
@@ -130,7 +132,7 @@ export const Attack: any = {
         if (c === w.w[buf.length]) {
           hits++; buf += c;
           if (buf === w.w) { mine.shift(); buf = ''; combo++; words++; if (combo % 3 === 0) { theirs.push(garb()); toast('* le mandaste basura', 900); } }
-        } else { combo = 0; cur.classList.remove('shake'); void cur.offsetWidth; cur.classList.add('shake'); }
+        } else { combo = 0; badC = c; badUntil = now() + 550; setTimeout(render, 600); cur.classList.remove('shake'); void cur.offsetWidth; cur.classList.add('shake'); }
         render();
       },
       back: () => { buf = buf.slice(0, -1); render(); }, tab: api.again,

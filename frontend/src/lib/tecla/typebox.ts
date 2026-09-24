@@ -41,7 +41,11 @@ export class TypeBox {
     const n = Math.max(w.length, t.length);
     for (let j = 0; j < n; j++) {
       const s = document.createElement('span'); s.className = 'l';
-      if (j < w.length) { s.textContent = w[j]; if (j < t.length) s.className += t[j] === w[j] ? ' ok' : ' bad'; }
+      if (j < w.length) {
+        // letra errada: se ve la que escribiste, tachada, y arriba chiquita la que iba
+        if (j < t.length && t[j] !== w[j]) { s.textContent = t[j]; s.className += ' bad'; s.dataset.exp = w[j]; }
+        else { s.textContent = w[j]; if (j < t.length) s.className += ' ok'; }
+      }
       else { s.textContent = t[j]; s.className += ' extra'; }
       el.append(s);
     }

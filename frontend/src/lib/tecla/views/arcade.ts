@@ -256,16 +256,21 @@ export class Arcade {
       const me = this.mp?.me, tnow = now();
       const cands = this.ents.filter(e => e.word[0] === c && !e.done && !(e.lock > tnow) && (!e.owner || e.owner === me) && !(this.kind === 'torre' && e.d < 0));
       this.keys++;
-      if (!cands.length) return this.miss();
+      if (!cands.length) return this.miss(c);
       cands.sort((a, b) => this.danger(b) - this.danger(a)); this.target = cands[0]; this.target.typed = 0;
     } else this.keys++;
     const e = this.target;
     if (e.word[e.typed] === c) { e.typed++; this.hits++; this.chars++; Sfx.key(); if (e.typed >= e.word.length) this.kill(e); }
-    else this.miss();
+    else this.miss(c, e);
   }
   back() { if (this.kind === 'runner') return runnerBack(this); if (this.target) { this.target.typed = 0; this.target = null; } }
-  miss() {
+  /* c = la tecla que se tocó mal: se ve tachada en la palabra (en el lugar de la que iba) o, si no había palabra, flotando abajo */
+  miss(c, e) {
     this.combo = 0; this.flash = 160; Sfx.miss();
+    if (c && c !== ' ') {
+      if (e) this.bad = { c, e, until: now() + 550 };
+      else this.floats.push({ x: this.W / 2, y: this.H - 36, text: c, col: this.c.err, size: 22, life: 0.8, strike: true });
+    }
     if (this.fever) { this.fever = false; this.float(this.W / 2, this.H * .3, 'fiebre perdida', this.c.sub, 16); }
   }
   float(x, y, text, col, size = 15) { this.floats.push({ x, y, text, col: col || this.c.acc, size, life: 1 }); }
@@ -451,9 +456,17 @@ export class Arcade {
     x.lineWidth = tgt || (e.color && !theirs) ? 2.5 : e.color ? 1.5 : 1; x.strokeStyle = e.color || (tgt ? this.c.acc : e.coin ? this.c.gold : e.type === 'rapida' ? this.c.err : this.c.dim); this.rr(bx, by, bw, bh, 7); x.stroke();
     if (e.color) { x.fillStyle = e.color; x.beginPath(); x.arc(bx + 1, by + 1, 4, 0, Math.PI * 2); x.fill(); }
     if (e.pw) { x.fillStyle = this.c.acc2; x.beginPath(); x.arc(left - pad / 2 - 2, cy, fs * .52, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.font = `600 ${Math.round(fs * .75)}px sans-serif`; x.fillText(POWERS[e.pw].g, left - pad / 2 - 2, cy + 1); x.textAlign = 'left'; x.font = `500 ${fs}px "IBM Plex Mono", ui-monospace, monospace`; }
-    const done = e.word.slice(0, e.typed), rest = e.word.slice(e.typed);
+    const done = e.word.slice(0, e.typed), rest = e.word.slice(e.typed), dw = x.measureText(done).width;
+    const badC = this.bad && this.bad.e === e && now() < this.bad.until ? this.bad.c : e.bad && now() < (e.badUntil || 0) ? e.bad : null;
     x.fillStyle = this.c.acc; x.fillText(done, left, cy);
-    x.fillStyle = e.boss || e.type === 'rapida' ? this.c.err : e.coin ? this.c.gold : this.c.ink; x.fillText(rest, left + x.measureText(done).width, cy);
+    if (badC) {
+      const bw = x.measureText(badC).width;
+      x.fillStyle = this.c.err; x.fillText(badC, left + dw, cy);
+      x.strokeStyle = this.c.err; x.lineWidth = 2; x.beginPath(); x.moveTo(left + dw - 1, cy); x.lineTo(left + dw + bw + 1, cy); x.stroke();
+      x.fillStyle = e.boss || e.type === 'rapida' ? this.c.err : e.coin ? this.c.gold : this.c.ink; x.fillText(rest.slice(1), left + dw + bw, cy);
+    } else {
+      x.fillStyle = e.boss || e.type === 'rapida' ? this.c.err : e.coin ? this.c.gold : this.c.ink; x.fillText(rest, left + dw, cy);
+    }
     x.globalAlpha = 1;
     if (e.type === 'split') { x.strokeStyle = this.c.acc2; x.setLineDash([3, 3]); x.beginPath(); x.moveTo(left, cy + fs * .62); x.lineTo(left + w, cy + fs * .62); x.stroke(); x.setLineDash([]); }
   }
@@ -511,7 +524,10 @@ export class Arcade {
       if (p.ring) { x.globalAlpha = Math.max(0, p.life); x.strokeStyle = this.c.err; x.lineWidth = 3; x.beginPath(); x.arc(p.x, p.y, p.r, 0, Math.PI * 2); x.stroke(); continue; }
       x.globalAlpha = Math.max(0, p.life); x.fillStyle = p.col; x.font = `700 ${Math.round(15 * sc)}px "Martian Mono", monospace`; x.fillText(p.ch, p.x, p.y);
     }
-    for (const f of this.floats) { x.globalAlpha = Math.min(1, f.life * 1.6); x.fillStyle = f.col; x.font = `800 ${Math.round(f.size * clamp(sc, .8, 1.1))}px "Martian Mono", monospace`; x.fillText(f.text, f.x, f.y); }
+    for (const f of this.floats) {
+      x.globalAlpha = Math.min(1, f.life * 1.6); x.fillStyle = f.col; x.font = `800 ${Math.round(f.size * clamp(sc, .8, 1.1))}px "Martian Mono", monospace`; x.fillText(f.text, f.x, f.y);
+      if (f.strike) { const w2 = x.measureText(f.text).width / 2 + 3; x.strokeStyle = f.col; x.lineWidth = 2.5; x.beginPath(); x.moveTo(f.x - w2, f.y); x.lineTo(f.x + w2, f.y); x.stroke(); }
+    }
     x.globalAlpha = 1; x.textAlign = 'left';
     x.restore();
     if (this.freezeT > 0) { x.fillStyle = this.c.acc2; x.globalAlpha = .12; x.fillRect(0, 0, W, H); x.globalAlpha = 1; this.badge(`❄ ${(this.freezeT / 1000).toFixed(1)}s`, W / 2, 20); }

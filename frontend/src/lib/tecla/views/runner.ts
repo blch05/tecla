@@ -60,9 +60,9 @@ export function runnerChar(g, c) {
   // elegir tramo
   if (g.choice) {
     const ch = g.choice;
-    if (!ch.target) { ch.target = ch.opts.find(o => o.w[0] === c) || null; if (!ch.target) return g.miss(); ch.i = 0; }
+    if (!ch.target) { ch.target = ch.opts.find(o => o.w[0] === c) || null; if (!ch.target) return g.miss(c); ch.i = 0; }
     if (ch.target.w[ch.i] === c) { ch.i++; g.hits++; Sfx.key(); if (ch.i >= ch.target.w.length) pickTramo(g, ch.target.kind); }
-    else g.miss();
+    else { g.miss(); ch.bad = c; ch.badUntil = performance.now() + 550; }
     return;
   }
   // cambiando de carril (el texto queda en pausa hasta terminar la palabra)
@@ -70,7 +70,7 @@ export function runnerChar(g, c) {
     const t = g.laneTarget;
     // las letras de la palabra de carril también empujan: cualquier tipeo correcto es motor
     if (t.w[t.i] === c) { t.i++; step(g); if (t.i >= t.w.length) moveLane(g, t.lane); }
-    else g.miss();
+    else { g.miss(); t.bad = c; t.badUntil = performance.now() + 550; }
     return;
   }
   if (g.laneWords) {
@@ -79,7 +79,7 @@ export function runnerChar(g, c) {
   }
   // el texto: cada letra correcta es un paso
   const wd = g.tape[g.si], expect = g.ci < wd.w.length ? wd.w[g.ci] : ' ';
-  if (c !== expect) { wd.err = true; g.miss(); g.gap -= 0.8; g.stumble = 1; return; }
+  if (c !== expect) { wd.err = true; g.miss(); g.gap -= 0.8; g.stumble = 1; if (c !== ' ') g.tapeBad = { c, until: performance.now() + 550 }; return; }
   step(g);
   if (expect === ' ') { g.si++; g.ci = 0; fillTape(g); return; }
   g.ci++;
@@ -270,7 +270,8 @@ export function runnerDraw(g) {
     const cy = g.laneCenter(lw.lane), typed = g.laneTarget && g.laneTarget.lane === lw.lane ? g.laneTarget.i : 0;
     const arrow = lw.lane < g.lane ? '↑' : '↓';
     x.fillStyle = c.acc; x.font = `700 ${Math.round(14 * sc)}px "Martian Mono", monospace`; x.textAlign = 'center'; x.fillText(arrow, px - 26 * sc, cy); x.textAlign = 'left';
-    g.word({ word: lw.w, typed, color: c.acc }, px + 10 * sc, cy, false);
+    const lt = g.laneTarget && g.laneTarget.lane === lw.lane ? g.laneTarget : null;
+    g.word({ word: lw.w, typed, color: c.acc, bad: lt?.bad, badUntil: lt?.badUntil }, px + 10 * sc, cy, false);
   }
 
   // cinta de texto (el motor)
@@ -323,8 +324,10 @@ function drawTape(g, y0) {
       const px = sx + j * cw, past = i < g.si || (i === g.si && j < g.ci);
       const fade = past ? clamp(1 - (cx - px) / (W * 0.3), .15, 1) : 1;
       x.globalAlpha = fade * (paused && !past ? .45 : 1);
-      x.fillStyle = past ? (wd.err ? c.err : c.acc) : i === g.si && wd.err ? c.err : c.ink;
-      x.fillText(wd.w[j], px, cy);
+      const atCursor = i === g.si && j === g.ci, bad = atCursor && g.tapeBad && performance.now() < g.tapeBad.until ? g.tapeBad.c : null;
+      x.fillStyle = bad ? c.err : past ? (wd.err ? c.err : c.acc) : i === g.si && wd.err ? c.err : c.ink;
+      x.fillText(bad || wd.w[j], px, cy);
+      if (bad) { x.strokeStyle = c.err; x.lineWidth = 2; x.beginPath(); x.moveTo(px - 1, cy); x.lineTo(px + cw + 1, cy); x.stroke(); }
     }
   }
   x.globalAlpha = 1;
@@ -370,7 +373,7 @@ function drawChoice(g) {
     x.fillStyle = c.sub; x.font = `500 ${Math.round(12 * sc)}px "IBM Plex Mono", monospace`;
     cd.lines.forEach((l, k) => x.fillText(l, cx + cw / 2, cy + chh * (0.36 + k * 0.13)));
     x.textAlign = 'left';
-    g.word({ word: cd.o.w, typed: on ? ch.i : 0, color: cd.col }, cx + cw / 2, cy + chh * 0.78, true);
+    g.word({ word: cd.o.w, typed: on ? ch.i : 0, color: cd.col, bad: on ? ch.bad : null, badUntil: ch.badUntil }, cx + cw / 2, cy + chh * 0.78, true);
     x.textAlign = 'center';
   });
   x.textAlign = 'left';
