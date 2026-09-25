@@ -10,6 +10,9 @@ import { EFFECT, type ShopItem, type Slot } from '@/lib/shop/catalog';
 export interface ShopState { balance: number; earnedToday: number; cap: number; owned: string[]; equipped: Partial<Record<Slot, string>> }
 type Listener = () => void;
 const COS_KEY = 'tecla:cos'; // lo equipado, para aplicarlo antes de pintar (ver THEME_BOOT)
+/** Lo equipado que se aplica en este navegador (el valor de EFFECT de cada lugar). */
+export type Cos = Partial<Record<'caret' | 'runner' | 'festejo' | 'fuente' | 'fondo' | 'efecto', string>>;
+const COS_SLOTS: [keyof Cos, Slot][] = [['caret', 'cursor'], ['runner', 'runner'], ['festejo', 'festejo'], ['fuente', 'fuente'], ['fondo', 'fondo'], ['efecto', 'efecto']];
 
 export const Shop = {
   state: null as ShopState | null,
@@ -25,6 +28,8 @@ export const Shop = {
   init() {
     if (this.started || typeof window === 'undefined') return; this.started = true;
     if (process.env.NODE_ENV !== 'production') (window as any).__teclaShop = this; // depuración en desarrollo
+    // la tipografía se pide ya, con lo guardado de la última vez (antes de saber si hay sesión)
+    const saved = cosmetics().fuente; if (saved) import('@/lib/shop/fonts').then(f => f.applyFont(saved));
     import('@/lib/tecla/history').then(({ History }) => {
       const sync = () => {
         const on = !!History.user && History.mode === 'cloud';
@@ -88,17 +93,22 @@ export const Shop = {
   apply() {
     if (typeof document === 'undefined') return;
     const eq = this.state?.equipped || {};
-    const cos = { caret: EFFECT[eq.cursor || ''] || '', runner: EFFECT[eq.runner || ''] || '' };
+    const cos: Cos = {}; for (const [k, slot] of COS_SLOTS) { const v = EFFECT[eq[slot] || '']; if (v) cos[k] = v; }
     const d = document.documentElement;
     if (cos.caret) d.dataset.caret = cos.caret; else delete d.dataset.caret;
     try { if (this.state) localStorage.setItem(COS_KEY, JSON.stringify(cos)); else localStorage.removeItem(COS_KEY); } catch {}
+    if ((cos.fuente || '') !== (d.dataset.font || '')) import('@/lib/shop/fonts').then(f => f.applyFont(cos.fuente || ''));
+    window.dispatchEvent(new CustomEvent('tecla:cos', { detail: cos }));
   },
 };
 
-/** Aspecto del corredor equipado (lo lee el canvas del runner). */
-export function runnerSkin(): string {
-  try { return JSON.parse(localStorage.getItem(COS_KEY) || '{}').runner || ''; } catch { return ''; }
+/** Lo equipado guardado en este navegador (sirve sin esperar a la base). */
+export function cosmetics(): Cos {
+  try { return JSON.parse(localStorage.getItem(COS_KEY) || '{}') || {}; } catch { return {}; }
 }
+
+/** Aspecto del corredor equipado (lo lee el canvas del runner). */
+export function runnerSkin(): string { return cosmetics().runner || ''; }
 
 /** La tienda como hook de React. */
 export function useShop() {

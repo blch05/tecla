@@ -73,6 +73,8 @@ export const History = {
     const r: Run = { ...run, id: uuid(), d: Date.now(), pts: Math.max(0, Math.round(run.pts || 0)) } as Run;
     const list = this.local(); list.unshift(r); this.saveLocal(list);
     this.push(); this.changed();
+    // ganar en competir o en una carrera en vivo: festejo de la tienda (si hay uno puesto)
+    if (r.t === 'comp' && r.win) import('@/lib/shop/celebrate').then(m => m.celebrate('win')).catch(() => {});
     return r;
   },
 

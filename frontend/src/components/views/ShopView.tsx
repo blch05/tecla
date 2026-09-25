@@ -3,13 +3,23 @@
 /* Tienda: se compra con teclas* (la moneda que se gana jugando) y solo hay cosas estéticas.
    Comprar y equipar lo validan las funciones de la base; acá se muestra y se pide. */
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PageHeader from '@/components/ui/PageHeader';
 import Tabs from '@/components/ui/Tabs';
 import { useShop } from '@/lib/shop/client';
 import { EFFECT, RARITY_NAMES, SLOTS, type ShopItem, type Slot } from '@/lib/shop/catalog';
 import { applyTheme, PREMIUM, readTheme } from '@/lib/theme';
 import { getSupabase } from '@/lib/supabase/client';
+import Avatar from '@/components/shop/Avatar';
+import Badge from '@/components/shop/Badge';
+import { celebrate } from '@/lib/shop/celebrate';
+import { play as playPack } from '@/lib/shop/sounds';
+import { FONTS } from '@/lib/shop/fonts';
+import { FONT_FAMILIES } from '@/lib/theme';
+
+/* el sonido del test se guarda en su configuración (tecla:cfg) */
+const testSound = () => { try { return JSON.parse(localStorage.getItem('tecla:cfg') || '{}').sound || 'off'; } catch { return 'off'; } };
+const setTestSound = (v: string) => { try { const c = JSON.parse(localStorage.getItem('tecla:cfg') || '{}'); localStorage.setItem('tecla:cfg', JSON.stringify({ ...c, sound: v })); } catch {} };
 
 const SKIN_COLORS: Record<string, string> = { rojo: '#F0735F', fantasma: '#9FB3C8', dorado: '#D9A21B', arcoiris: 'url(#rb)' };
 const EARN = [
@@ -19,8 +29,36 @@ const EARN = [
   ['estudiar', 'hasta 6', 'según tus aciertos'],
 ];
 
-function Preview({ item, name }: { item: ShopItem; name: string }) {
+/** Tipografía: se descarga al mostrarse la tarjeta. */
+function FontPreview({ fx }: { fx: string }) {
+  useEffect(() => { FONTS[fx]?.load(); }, [fx]);
+  return <div className="shop-prev font-prev" data-font-prev={fx} style={{ fontFamily: FONT_FAMILIES[fx] + ',var(--mono)' }}>tecla* <span>áñ 123</span></div>;
+}
+
+/** Efecto del arcade: una capa de PixiJS solo mientras se prueba. */
+function FxPreview({ fx }: { fx: string }) {
+  const ref = useRef<HTMLDivElement>(null), cvRef = useRef<HTMLSpanElement>(null), live = useRef<{ fx: import('@/lib/shop/pixifx').PixiFx | null; t: number }>({ fx: null, t: 0 });
+  useEffect(() => () => { clearTimeout(live.current.t); live.current.fx?.destroy(); }, []);
+  const test = async () => {
+    const el = ref.current, under = cvRef.current; if (!el || !under) return;
+    const L = live.current; clearTimeout(L.t);
+    if (!L.fx) { const { PixiFx } = await import('@/lib/shop/pixifx'); L.fx = await PixiFx.attach(el, under, fx); }
+    const w = el.clientWidth, h = el.clientHeight, acc = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#34A3F0';
+    L.fx?.burst(w / 2, h / 2, 14, acc); setTimeout(() => L.fx?.burst(w * .28, h * .4, 8, '#F2B13C'), 220); setTimeout(() => L.fx?.burst(w * .72, h * .6, 8, '#F0607A'), 380);
+    L.t = window.setTimeout(() => { L.fx?.destroy(); L.fx = null; }, 2500);
+  };
+  return <div className="shop-prev fx-prev" ref={ref}><span ref={cvRef} className="fx-word">boom</span><button className="try" type="button" onClick={test}>▶ probar</button></div>;
+}
+
+function Preview({ item, name, seed }: { item: ShopItem; name: string; seed: string }) {
   const fx = EFFECT[item.id];
+  if (item.slot === 'fuente') return <FontPreview fx={fx} />;
+  if (item.slot === 'efecto') return <FxPreview fx={fx} />;
+  if (item.slot === 'avatar') return <div className="shop-prev"><Avatar name={name} seed={seed} style={fx} /></div>;
+  if (item.slot === 'insignia') return <div className="shop-prev"><Badge fx={fx} size={46} /></div>;
+  if (item.slot === 'sonido') return <div className="shop-prev"><button className="try" type="button" onClick={() => { ['key', 'key', 'key', 'space', 'key', 'key', 'err'].forEach((w, i) => setTimeout(() => playPack(fx, w as 'key'), i * 130)); setTimeout(() => playPack(fx, 'end'), 1100); }}>▶ escuchar</button></div>;
+  if (item.slot === 'festejo') return <div className="shop-prev"><button className="try" type="button" onClick={() => celebrate('record', fx)}>▶ probar</button></div>;
+  if (item.slot === 'fondo') return <div className="shop-prev bg-prev" data-bg={fx}><button className="try" type="button" onClick={() => window.dispatchEvent(new CustomEvent('tecla:bg-preview', { detail: fx }))}>▶ probar 8 s</button></div>;
   if (item.slot === 'cursor') return <div className="shop-prev" data-caret-prev={fx}><span className="caret-demo">te<span className="caret" style={{ position: 'relative', display: 'inline-block', verticalAlign: 'top' }} />cla</span></div>;
   if (item.slot === 'acento') { const p = PREMIUM.find(a => a.item === item.id); return <div className="shop-prev"><span className="sw-big" style={{ background: p?.color }} /></div>; }
   if (item.slot === 'marco') return <div className="shop-prev"><div className="avatar" data-frame={fx}><span>{name[0]?.toUpperCase() || 'V'}</span></div></div>;
@@ -43,11 +81,14 @@ export default function ShopView() {
   const [msg, setMsg] = useState('');
   const [log, setLog] = useState<{ amount: number; reason: string; created_at: string }[] | null>(null);
   const [name, setName] = useState('vos');
+  const [seed, setSeed] = useState('vos');
+  const [sound, setSound] = useState('off');
+  useEffect(() => setSound(testSound()), []);
   const st = shop.state, items = shop.items || [];
 
   // movimientos recientes y nombre (para la vista previa del marco)
   useEffect(() => {
-    import('@/lib/tecla/history').then(({ History }) => setName(History.user?.name || 'vos'));
+    import('@/lib/tecla/history').then(({ History }) => { const u = History.user; setName(u?.name || 'vos'); setSeed(u?.username || u?.id || 'vos'); });
     const sb = getSupabase(); if (!sb || !shop.signedIn) return;
     sb.from('coin_log').select('amount, reason, created_at').order('created_at', { ascending: false }).limit(12).then(({ data }) => setLog(data || []));
   }, [shop.signedIn, st?.balance]);
@@ -67,6 +108,7 @@ export default function ShopView() {
       const p = PREMIUM.find(a => a.item === it.id);
       applyTheme({ ...readTheme(), accent: on && p ? p.key : 'celeste' });
     }
+    if (it.slot === 'sonido') { const v = on ? EFFECT[it.id] : 'off'; setTestSound(v); setSound(v); }
     const err = await shop.equip(it.slot, on ? it.id : null);
     setBusy(null); if (err) setMsg(err);
   };
@@ -91,17 +133,18 @@ export default function ShopView() {
           <div className="shop-grid">
             {shown.map(it => {
               const owned = !!st?.owned.includes(it.id);
-              const on = it.slot === 'acento' ? owned && PREMIUM.find(a => a.item === it.id)?.key === theme?.accent : st?.equipped[it.slot] === it.id;
+              const on = it.slot === 'acento' ? owned && PREMIUM.find(a => a.item === it.id)?.key === theme?.accent
+                : it.slot === 'sonido' ? owned && sound === EFFECT[it.id] : st?.equipped[it.slot] === it.id;
               const short = !!st && st.balance < it.price;
               return (
                 <div key={it.id} className={'shop-card' + (owned ? ' owned' : '') + (on ? ' on' : '')}>
                   <span className={'rar ' + it.rarity}>{RARITY_NAMES[it.rarity]}</span>
-                  <Preview item={it} name={name} />
+                  <Preview item={it} name={name} seed={seed} />
                   <b>{it.name}</b>
                   <div className="row">
                     {owned ? <span className="hint">{on ? 'en uso' : 'es tuyo'}</span> : <span className="price">✱ {it.price}</span>}
                     {!st ? null
-                      : owned ? <button className={'btn' + (on ? ' ghost' : ' primary')} type="button" disabled={busy === it.id} onClick={() => equip(it, !on)}>{on ? 'sacar' : it.slot === 'acento' ? 'usar' : 'equipar'}</button>
+                      : owned ? <button className={'btn' + (on ? ' ghost' : ' primary')} type="button" disabled={busy === it.id} onClick={() => equip(it, !on)}>{on ? 'sacar' : it.slot === 'acento' || it.slot === 'sonido' ? 'usar' : 'equipar'}</button>
                         : <button className="btn primary" type="button" disabled={busy === it.id || short} title={short ? `te faltan ${it.price - st.balance}` : ''} onClick={() => buy(it)}>{busy === it.id ? '…' : short ? `faltan ${it.price - st.balance}` : 'comprar'}</button>}
                   </div>
                 </div>

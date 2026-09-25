@@ -227,4 +227,17 @@ describe('tienda', async () => {
     const r = await rpc('public_cosmetics', { p_username: 'nadie_' + Date.now() });
     assert.deepEqual(r.json, {});
   });
+
+  // segunda tanda (20260927120000_shop_more.sql)
+  const more = ready ? await rest('shop_items?select=id&slot=eq.efecto&limit=1') : null;
+  const skipMore = skip || (!(more?.json?.length) && 'segunda tanda de la tienda sin aplicar');
+  test('la segunda tanda trae todas las categorías nuevas', { skip: skipMore }, async () => {
+    const r = await rest('shop_items?select=slot&active=eq.true');
+    const slots = new Set(r.json.map(i => i.slot));
+    for (const s of ['festejo', 'sonido', 'fuente', 'fondo', 'avatar', 'insignia', 'efecto']) assert.ok(slots.has(s), `falta ${s}`);
+  });
+  test('sin sesión tampoco se equipan los lugares nuevos', { skip: skipMore }, async () => {
+    const e = await rpc('equip_item', { p_slot: 'efecto', p_item: 'efecto-chispas' });
+    assert.ok(e.status >= 400 || e.json?.ok === false);
+  });
 });

@@ -7,12 +7,16 @@ import CountUp from '@/components/bits/CountUp';
 import ShinyText from '@/components/bits/ShinyText';
 import DomNode from '@/components/ui/DomNode';
 import PageHeader from '@/components/ui/PageHeader';
+import { useShop } from '@/lib/shop/client';
+import { EFFECT } from '@/lib/shop/catalog';
+import { isPack, PACKS, play as playPack, preload as preloadPack } from '@/lib/shop/sounds';
+import { celebrate } from '@/lib/shop/celebrate';
 
 type Mode = 'time' | 'words';
-type Sound = 'off' | 'mecanico' | 'suave' | 'maquina';
+type Sound = string; // off, los sintetizados (mecanico, suave, maquina) o un paquete de la tienda
 export interface TestCfg { mode: Mode; time: number; words: number; ghost: boolean; weak: boolean; vocab: string; sound: Sound }
 export const DEFAULT_CFG: TestCfg = { mode: 'time', time: 30, words: 25, ghost: true, weak: false, vocab: 'medio', sound: 'off' };
-const SOUNDS: [Sound, string][] = [['off', 'sin sonido'], ['mecanico', 'mecánico'], ['suave', 'suave'], ['maquina', 'máquina']];
+const BASE_SOUNDS: [Sound, string][] = [['off', 'sin sonido'], ['mecanico', 'mecánico'], ['suave', 'suave'], ['maquina', 'máquina']];
 const VOCAB_TIPS: Record<string, string> = { facil: 'palabras cortas y cotidianas', medio: 'palabras de uso común', dificil: 'palabras largas, con tildes, ñ y términos técnicos' };
 
 /** clave del modo (para el récord y el fantasma): t30, w25, t60-dificil… */
@@ -40,6 +44,7 @@ export default function TestView() {
   const [live, setLive] = useState({ count: '', wpm: '', ghost: '' });
   const [res, setRes] = useState<Result | null>(null);
   const consumer = useRef<any>(null);
+  const shop = useShop();
 
   const vlabel = (c: TestCfg) => (c.vocab && c.vocab !== 'medio' ? ' · ' + M.current.VOCAB_NAMES[c.vocab] : '');
 
@@ -91,6 +96,8 @@ export default function TestView() {
       .map(([k, v]) => ({ k, err: v.e / v.n, ms: v.c ? v.t / v.c : 0, n: v.n })).filter(x => x.n >= 2)
       .sort((a, b) => (b.err * 600 + b.ms) - (a.err * 600 + a.ms)).slice(0, 6);
     const chart = m.lineChart([{ v: s.per.map((p: any) => p.wpm), cls: 'ln' }, { v: s.per.map((p: any) => p.raw), cls: 'ln2' }], { marks: s.per.map((p: any) => p.err), xl: (i: number) => (i + 1) + 's', H: 150 });
+    celebrate(newPb ? 'record' : 'fin');
+    if (isPack(c.sound)) playPack(c.sound, 'end');
     setRes({ wpm: s.wpm, acc: s.acc, raw: s.raw, cons: s.cons, secs: s.secs, correct: s.correct, all: s.all, chart, slow, label: label + (c.weak ? ' · débiles' : ''), newPb, pb });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -104,7 +111,7 @@ export default function TestView() {
       if (!alive || !boxRef.current) return;
       M.current = { store: u.store, rand: u.rand, toast: u.toast, Sfx: sfx.Sfx, VOCAB: w.VOCAB, VOCAB_NAMES: w.VOCAB_NAMES, wordGen: w.wordGen, KS: ks.KS, weakWordGen: ks.weakWordGen, lineChart: ch.lineChart, getConsumer: input.getConsumer, setConsumer: input.setConsumer, History: hi.History };
       const c: TestCfg = { ...DEFAULT_CFG, ...u.store.get('cfg', {}) };
-      cfgRef.current = c; setCfgState(c);
+      cfgRef.current = c; setCfgState(c); preloadPack(c.sound);
       const box = new tb.TypeBox(boxRef.current, { onTick: updateLive, onInput: updateLive, onFinish: finish });
       eng.current.box = box;
       consumer.current = {
@@ -123,21 +130,33 @@ export default function TestView() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // al cambiar la tipografía (tienda) las letras cambian de ancho: recolocar el cursor
+  useEffect(() => {
+    const on = () => eng.current.box?.refresh();
+    window.addEventListener('tecla:font', on); return () => window.removeEventListener('tecla:font', on);
+  }, []);
+
   const playSound = (c: string) => {
     const m = M.current, p = cfgRef.current.sound || 'off'; if (p === 'off') return;
     m.Sfx.init();
     const b = eng.current.box, w = b.words[b.wi] || '', typed = b.typed[b.wi] || '';
-    if (c !== ' ' && w[typed.length] !== c) m.Sfx.typeErr(p); else m.Sfx.typeKey(p, c === ' ');
+    const bad = c !== ' ' && w[typed.length] !== c;
+    if (isPack(p)) return playPack(p, bad ? 'err' : c === ' ' ? 'space' : 'key');
+    if (bad) m.Sfx.typeErr(p); else m.Sfx.typeKey(p, c === ' ');
   };
 
   const change = (patch: Partial<TestCfg>) => {
     const next = { ...cfgRef.current, ...patch };
     cfgRef.current = next; setCfgState(next); M.current.store.set('cfg', next); restart(undefined, true);
   };
+  // los paquetes comprados en la tienda se suman a la lista
+  const SOUNDS: [Sound, string][] = [...BASE_SOUNDS, ...(shop.items || []).filter(i => i.slot === 'sonido' && shop.owns(i.id)).map(i => [EFFECT[i.id], PACKS[EFFECT[i.id]]] as [Sound, string])];
+  if (cfg && isPack(cfg.sound) && !SOUNDS.some(([k]) => k === cfg.sound)) SOUNDS.push([cfg.sound, PACKS[cfg.sound]]);
   const soundIdx = Math.max(0, SOUNDS.findIndex(([k]) => k === (cfg?.sound || 'off')));
   const nextSound = () => {
     const k = SOUNDS[(soundIdx + 1) % SOUNDS.length][0];
-    if (k !== 'off') { M.current.Sfx.init(); M.current.Sfx.typeKey(k); }
+    if (isPack(k)) playPack(k, 'key');
+    else if (k !== 'off') { M.current.Sfx.init(); M.current.Sfx.typeKey(k); }
     change({ sound: k });
   };
   const repeat = () => restart(eng.current.seed);

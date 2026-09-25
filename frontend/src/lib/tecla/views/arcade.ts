@@ -4,6 +4,8 @@ import { SENTENCES, VOCAB } from '@/lib/tecla/data/words';
 import { focusKb, setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
 import { Sfx } from '@/lib/tecla/sfx';
+import { cosmetics } from '@/lib/shop/client';
+import { celebrate } from '@/lib/shop/celebrate';
 import { runnerBack, runnerChar, runnerDraw, runnerStart, runnerUpdate } from '@/lib/tecla/views/runner';
 export { Sfx };
 export { RUNNER_OBS } from '@/lib/tecla/views/runner';
@@ -75,6 +77,17 @@ export class Arcade {
     this.kind = 'caen'; this.running = false; this.ents = []; this.fx = []; this.floats = []; this.lasers = [];
     stage.addEventListener('mousedown', e => { if (e.target === this.cv) { e.preventDefault(); focusKb(); } });
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(stage);
+    this.pfx = null; this.fxOn(); this.onCos = () => this.fxOn(); window.addEventListener('tecla:cos', this.onCos);
+  }
+  /** efecto de la tienda (PixiJS) encima del canvas; se carga solo si hay uno equipado */
+  fxOn() {
+    const kind = cosmetics().efecto || '';
+    if (this.pfx?.kind === kind) return;
+    this.pfx?.fx?.destroy(); this.pfx = null; if (!kind || this.dead) return;
+    const slot = { kind, fx: null }; this.pfx = slot;
+    import('@/lib/shop/pixifx').then(m => m.PixiFx.attach(this.stage, this.cv, kind)).then(fx => {
+      if (this.pfx === slot && !this.dead) slot.fx = fx; else fx?.destroy();
+    }).catch(() => {});
   }
   colors() { const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim(); this.c = { ink: g('--ink'), sub: g('--sub'), dim: g('--dim'), acc: g('--accent'), acc2: g('--accent-2'), soft: g('--soft'), err: g('--err'), ok: g('--ok'), gold: g('--warn'), bg: g('--surface'), pat: g('--pat') }; }
   resize() {
@@ -194,7 +207,7 @@ export class Arcade {
     }
     this.float(this.W / 2, this.H * .2, n > 1 ? `¡te mandaron ${n} palabras!` : '¡te mandaron basura!', this.c.err, 18); Sfx.miss();
   }
-  winMp() { if (!this.running) return; this.recordRun(true); this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); Sfx.mission();
+  winMp() { if (!this.running) return; this.recordRun(true); this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); Sfx.mission(); celebrate('win');
     this.show({ kind: 'mpWin', score: this.score }); }
   endRemote(sum) { this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); this.draw();
     this.show({ kind: 'mpEnd', coop: !!(sum && sum.coop), score: sum?.score || 0, wave: sum?.wave || 0 }); }
@@ -221,7 +234,7 @@ export class Arcade {
   remoteHit(id) { const e = this.ents.find(o => o.id === id); if (e && !e.done && this.running) this.kill(e, true); }
   stop() { this.running = false; cancelAnimationFrame(this.raf); this.emitFever(false); }
   emitFever(on) { if (this._fever === on) return; this._fever = on; window.dispatchEvent(new CustomEvent('tecla:fever', { detail: on })); }
-  destroy() { this.stop(); this.ro?.disconnect(); }
+  destroy() { this.stop(); this.ro?.disconnect(); this.dead = true; this.pfx?.fx?.destroy(); this.pfx = null; window.removeEventListener('tecla:cos', this.onCos); }
   enter() { if (this.mp) return; if (!this.running) this.start(); else if (this.userPaused) this.resume(); }
   tab() { if (this.mp) return; this.start(); }
   esc() { if (this.mp) return; if (this.running && !this.choices && !this.userPaused) { this.userPaused = this.paused = true; this.show({ kind: 'pause' }); } }
@@ -285,7 +298,7 @@ export class Arcade {
     if (this.fever) { this.fever = false; this.float(this.W / 2, this.H * .3, 'fiebre perdida', this.c.sub, 16); }
   }
   float(x, y, text, col, size = 15) { this.floats.push({ x, y, text, col: col || this.c.acc, size, life: 1 }); }
-  burst(x, y, n = 9, col) { const ch = ['*', '—', '|', '/', '*']; for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = 50 + Math.random() * 150; this.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, life: 1, ch: ch[i % ch.length], col: col || (this.fever ? this.c.acc2 : this.c.acc) }); } }
+  burst(x, y, n = 9, col) { this.pfx?.fx?.burst(x, y, n, col || (this.fever ? this.c.acc2 : this.c.acc)); const ch = ['*', '—', '|', '/', '*']; for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = 50 + Math.random() * 150; this.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, life: 1, ch: ch[i % ch.length], col: col || (this.fever ? this.c.acc2 : this.c.acc) }); } }
   pos(e) { if (this.kind === 'torre') return this.at(Math.max(0, e.d), e.p); return [e.x, e.y]; }
   remove(e) { this.ents = this.ents.filter(x => x !== e); if (this.target === e) this.target = null; }
   kill(e, remote = false) {
@@ -583,7 +596,7 @@ export class Arcade {
       return;
     }
     this.running = false; cancelAnimationFrame(this.raf); this.checkMissions(); this.draw(); this.hud(); Sfx.over();
-    const best = store.get(this.bestKey(), 0), rec = this.score > best; this.recordRun(true); this.overBest = Math.max(best, this.score); this.hud(true); this.diffBar();
+    const best = store.get(this.bestKey(), 0), rec = this.score > best; this.recordRun(true); if (rec && this.score > 0) celebrate('record'); this.overBest = Math.max(best, this.score); this.hud(true); this.diffBar();
     const where = this.kind === 'torre' ? `llegaste a la oleada ${this.wave}` : this.kind === 'runner' ? `corriste ${Math.round(this.dist)} metros · ${this.coins} monedas` : `llegaste al nivel ${this.level}`;
     const fresh = this.newMis; this.newMis = null;
     this.show({ kind: 'over', rec, where, fresh, cloud: History.mode === 'cloud',

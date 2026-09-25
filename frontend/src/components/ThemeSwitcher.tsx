@@ -11,7 +11,11 @@ export default function ThemeSwitcher() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setTheme(readTheme()); }, []);
+  useEffect(() => {
+    // el tema también cambia desde otros lugares (la tienda): mantenerse al día
+    const sync = () => setTheme(readTheme());
+    sync(); window.addEventListener('tecla:theme', sync); return () => window.removeEventListener('tecla:theme', sync);
+  }, []);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
@@ -20,7 +24,7 @@ export default function ThemeSwitcher() {
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
   }, [open]);
 
-  const set = (patch: Partial<Theme>) => { const t = { ...(theme || readTheme()), ...patch }; setTheme(t); applyTheme(t); };
+  const set = (patch: Partial<Theme>) => { const t = { ...readTheme(), ...patch }; setTheme(t); applyTheme(t); };
   const accent = [...ACCENTS, ...PREMIUM].find(a => a.key === theme?.accent) || ACCENTS[0];
 
   return (

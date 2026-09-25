@@ -11,6 +11,8 @@ import Tabs from '@/components/ui/Tabs';
 import PageHeader from '@/components/ui/PageHeader';
 import { useShop } from '@/lib/shop/client';
 import { EFFECT, titleOf } from '@/lib/shop/catalog';
+import Avatar from '@/components/shop/Avatar';
+import Badge from '@/components/shop/Badge';
 
 const KINDS = [{ id: 'all', label: 'todo' }, { id: 'test', label: 'tests' }, { id: 'arcade', label: 'arcade' }, { id: 'comp', label: 'competir' }, { id: 'study', label: 'estudiar' }];
 const GLYPH: Record<string, string> = { test: '|', arcade: '*', comp: '—', study: '/' };
@@ -65,13 +67,10 @@ export default function ProfileView() {
       <div className="col">
         <div className="panel phead">
           <span className="corner">* — |</span>
-          <div className="avatar" data-frame={EFFECT[shop.state?.equipped.marco || ''] || undefined}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {me?.avatarUrl ? <img src={me.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <span>{name[0].toUpperCase()}</span>}
-          </div>
+          <Avatar url={me?.avatarUrl} name={name} seed={me?.username || me?.id || name} style={EFFECT[shop.state?.equipped.avatar || '']} frame={EFFECT[shop.state?.equipped.marco || '']} />
           <div className="pinfo">
             <span className="eyebrow">{me?.username ? '@' + me.username : 'perfil'}</span>
-            <h2>{name}</h2>
+            <h2 className="pname">{name}<Badge fx={EFFECT[shop.state?.equipped.insignia || '']} title={shop.items?.find(i => i.id === shop.state?.equipped.insignia)?.name} /></h2>
             {titleOf(shop.items || [], shop.state?.equipped.titulo) && <span className="ptitle">{titleOf(shop.items || [], shop.state?.equipped.titulo)}</span>}
             <p className="sub">nivel {L.lv} · {num(xp)} puntos · faltan {num(L.next)} para el nivel {L.lv + 1}</p>
             <div className="progress" style={{ maxWidth: 420 }}><i style={{ width: `${(L.pct * 100).toFixed(1)}%` }} /></div>
