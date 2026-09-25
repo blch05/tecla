@@ -63,12 +63,12 @@ export default function TestView() {
     });
   }, []);
 
-  const restart = useCallback((seed?: number) => {
+  const restart = useCallback((seed?: number, vsGhost = false) => {
     const m = M.current, c = cfgRef.current, e = eng.current; if (!m || !e.box) return;
     const pb = m.store.get('pb:' + testKey(c)); e.pb = pb;
     let ghost = null; e.ghost = false;
     if (seed == null) seed = m.rand();
-    if (c.ghost && pb && !c.weak) { seed = pb.seed; ghost = pb.tl; e.ghost = true; }
+    if (vsGhost && c.ghost && pb && !c.weak) { seed = pb.seed; ghost = pb.tl; e.ghost = true; }
     if (c.weak && !Object.keys(m.KS.keys).length) m.toast('Todavía no hay datos de tus teclas: hacé un par de tests primero.');
     e.seed = seed!;
     const gen = c.weak ? m.weakWordGen(seed) : m.wordGen(seed, m.VOCAB[c.vocab] || m.VOCAB.medio), timed = c.mode === 'time';
@@ -114,7 +114,7 @@ export default function TestView() {
         enter: () => { if (box.done) restart(); },
       };
       input.setConsumer(consumer.current);
-      restart();
+      restart(undefined, true); // al entrar: contra tu récord (si el fantasma está activado)
     });
     return () => {
       alive = false;
@@ -132,7 +132,7 @@ export default function TestView() {
 
   const change = (patch: Partial<TestCfg>) => {
     const next = { ...cfgRef.current, ...patch };
-    cfgRef.current = next; setCfgState(next); M.current.store.set('cfg', next); restart();
+    cfgRef.current = next; setCfgState(next); M.current.store.set('cfg', next); restart(undefined, true);
   };
   const soundIdx = Math.max(0, SOUNDS.findIndex(([k]) => k === (cfg?.sound || 'off')));
   const nextSound = () => {
@@ -140,7 +140,9 @@ export default function TestView() {
     if (k !== 'off') { M.current.Sfx.init(); M.current.Sfx.typeKey(k); }
     change({ sound: k });
   };
-  const repeat = () => { const g = cfgRef.current.ghost; cfgRef.current = { ...cfgRef.current, ghost: false }; restart(eng.current.seed); cfgRef.current = { ...cfgRef.current, ghost: g }; };
+  const repeat = () => restart(eng.current.seed);
+  const vsRecord = () => restart(undefined, true);
+  const hasPb = !!(cfg && M.current?.store.get('pb:' + testKey(cfg)) && !cfg.weak && cfg.ghost);
   const vocabNames = useMemo(() => (M.current ? Object.entries(M.current.VOCAB_NAMES as Record<string, string>) : []), [cfg]); // eslint-disable-line react-hooks/exhaustive-deps
   const motion = !reduced();
 
@@ -177,6 +179,7 @@ export default function TestView() {
       <div className="typing-wrap" hidden={!!res}>
         <div className="live"><span>{live.count}</span><span className="sm">{live.wpm}</span><span className="gh">{live.ghost}</span></div>
         <div ref={boxRef} />
+        {hasPb && !live.ghost && <button className="btn ghost ghost-back" type="button" onClick={vsRecord}>correr contra tu récord</button>}
         <p className="hint"><kbd>tab</kbd> texto nuevo &nbsp;·&nbsp; <kbd>esc</kbd> soltar el foco &nbsp;·&nbsp; <kbd>ctrl</kbd>+<kbd>⌫</kbd> borrar palabra</p>
       </div>
 
@@ -211,6 +214,7 @@ export default function TestView() {
           <div className="row">
             <button className="btn primary" type="button" onClick={() => restart()}>siguiente</button>
             <button className="btn" type="button" onClick={repeat}>repetir texto</button>
+            {hasPb && <button className="btn" type="button" onClick={vsRecord}>correr contra tu récord</button>}
             <button className="btn" type="button" onClick={() => change({ weak: true })}>entrenar puntos débiles</button>
             <span className="hint"><kbd>tab</kbd> siguiente</span>
           </div>

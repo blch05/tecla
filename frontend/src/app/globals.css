@@ -767,3 +767,5 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 .shop-log div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed var(--line);padding:3px 0}
 .shop-log .plus{color:var(--ok);font-weight:600}.shop-log .minus{color:var(--err);font-weight:600}
 @media (max-width:900px){ .shop-body{grid-template-columns:1fr} }
+
+.ghost-back{align-self:center;font-size:12.5px;padding:4px 12px}
