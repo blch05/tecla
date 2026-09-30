@@ -93,7 +93,7 @@ function PreStart({ mode, onStart, go, store }: { mode: Mode; onStart: () => voi
 function DiffSelector({ store }: { store: any }) {
   const [diff, setDiff] = useState<string>(() => store?.get('diff', 'parejo') || 'parejo');
   const [base, setBase] = useState<number | null>(null);
-  useEffect(() => { import('@/lib/tecla/views/shared').then(m => setBase(Math.round(m.botBase()))); }, []);
+  useEffect(() => { import('@/lib/compete/bots').then(m => setBase(Math.round(m.botBase()))); }, []);
   return (
     <div className="row">
       <span className="lbl">rivales</span>

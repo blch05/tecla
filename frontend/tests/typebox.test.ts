@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { TypeBox } from '@/lib/tecla/typebox';
 
 function setup(words: string[], opts: Record<string, unknown> = {}, cb: Record<string, unknown> = {}) {

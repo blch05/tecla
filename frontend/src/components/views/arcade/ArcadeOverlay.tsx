@@ -3,23 +3,22 @@
 /* Pantallas encima del canvas del arcade: inicio, pausa, mejoras, fin y los avisos de las salas online.
    El juego (Arcade) avisa qué mostrar con un "spec"; acá se dibuja y los botones llaman al juego. */
 import Link from 'next/link';
-import { ADIFF, ARC, DIFF_DESC, POWERS, RUNNER_OBS } from '@/lib/tecla/views/arcade';
+import { ADIFF, ARC, DIFF_DESC, POWERS, RUNNER_OBS } from '@/lib/arcade/config';
+import type { Arcade } from '@/lib/arcade/engine';
+import type { OverlaySpec } from '@/lib/arcade/types';
 import { newRoomCode } from '@/lib/rooms';
 
-export type OverlaySpec =
-  | { kind: 'intro' } | { kind: 'pause' } | { kind: 'upgrades' } | { kind: 'wait' }
-  | { kind: 'over'; rec: boolean; where: string; stats: string; fresh?: boolean[] | null; cloud: boolean }
-  | { kind: 'mpWin'; score: number } | { kind: 'mpOut'; score: number } | { kind: 'mpEnd'; coop: boolean; score: number; wave: number };
+export type { OverlaySpec };
 
 const Kbd = ({ children }: { children: React.ReactNode }) => <kbd>{children}</kbd>;
 
-function Missions({ game, fresh }: { game: any; fresh?: boolean[] | null }) {
-  const done: boolean[] = game.missionsDone();
+function Missions({ game, fresh }: { game: Arcade; fresh?: boolean[] | null }) {
+  const done = game.missionsDone();
   return (
     <div>
       <span className="lbl" style={{ marginBottom: 6 }}>misiones</span>
       <ul className="mis">
-        {ARC[game.kind].missions.map((m: { t: string }, i: number) => (
+        {ARC[game.kind].missions.map((m, i) => (
           <li key={m.t} className={(done[i] ? 'done' : '') + (fresh?.[i] ? ' new' : '')}>
             <span className="star">{done[i] ? '★' : '☆'}</span>{m.t}{fresh?.[i] && <b> · ¡nueva!</b>}
           </li>
@@ -29,15 +28,15 @@ function Missions({ game, fresh }: { game: any; fresh?: boolean[] | null }) {
   );
 }
 
-export default function ArcadeOverlay({ game, spec }: { game: any; spec: OverlaySpec | null }) {
+export default function ArcadeOverlay({ game, spec }: { game: Arcade | null; spec: OverlaySpec | null }) {
   if (!spec || !game) return null;
   const m = ARC[game.kind], D = ADIFF[game.diffKey()] || ADIFF.medio;
   let body: React.ReactNode = null;
 
   if (spec.kind === 'intro') {
     const chips = game.kind === 'runner'
-      ? Object.values(RUNNER_OBS as Record<string, { name: string; desc: string }>).map(o => <span key={o.name} className="chip"><b style={{ color: 'var(--accent)' }}>{o.name} </b>{o.desc}</span>)
-      : Object.values(POWERS as Record<string, { g: string; desc: string }>).map(p => <span key={p.g} className="chip"><b style={{ color: 'var(--accent)' }}>{p.g} </b>{p.desc}</span>);
+      ? Object.values(RUNNER_OBS).map(o => <span key={o.name} className="chip"><b style={{ color: 'var(--accent)' }}>{o.name} </b>{o.desc}</span>)
+      : Object.values(POWERS).map(p => <span key={p.g} className="chip"><b style={{ color: 'var(--accent)' }}>{p.g} </b>{p.desc}</span>);
     body = <>
       <span className="eyebrow">* — arcade</span>
       <h2>{m.name}</h2>
@@ -61,7 +60,7 @@ export default function ArcadeOverlay({ game, spec }: { game: any; spec: Overlay
       <span className="eyebrow">* oleada {game.wave} superada</span>
       <h2>elegí una mejora</h2>
       <div className="ups">
-        {(game.choices || []).map((u: { id: string; name: string; desc: string }, i: number) => (
+        {(game.choices || []).map((u, i) => (
           <button key={u.id} className="btn up" type="button" onClick={() => game.choose(u)}>
             <b>{i + 1} · {u.name}{u.id === 'turret' && game.turret ? ` (nivel ${game.turret + 1})` : ''}</b><span>{u.desc}</span>
           </button>

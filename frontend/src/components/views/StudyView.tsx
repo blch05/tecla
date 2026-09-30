@@ -39,7 +39,7 @@ export default function StudyView() {
   }, [mode]);
 
   const setDoc = useCallback((text: string, title: string | null, save: boolean) => {
-    const d = processDoc(text, title) as StudyDoc;
+    const d = processDoc(text, title);
     if (!d.paras.length) { toast('No encontramos párrafos útiles en ese texto.'); return false; }
     flush(); docRef.current = d;
     if (save) store.set('doc', { text: text.slice(0, 250000), title: d.title });

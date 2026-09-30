@@ -4,7 +4,8 @@ import path from 'node:path';
 export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
   test: {
-    environment: 'jsdom',
+    // lógica pura en node (rápido); los tests que tocan el DOM piden jsdom con @vitest-environment
+    environment: 'node',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
     css: false,

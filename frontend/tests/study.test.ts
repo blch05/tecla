@@ -1,7 +1,4 @@
-import { chunkSentences, processDoc as rawProcessDoc, tokens } from '@/lib/study/doc';
-
-// el módulo portado no tiene tipos: acá le damos una firma laxa
-const processDoc = rawProcessDoc as unknown as (raw: string, title?: string) => any;
+import { chunkSentences, processDoc, tokens } from '@/lib/study/doc';
 
 const DOC = `El ciclo del agua
 
@@ -15,10 +12,10 @@ describe('processDoc', () => {
   it('detecta el título y separa las definiciones en tarjetas', () => {
     const d = processDoc(DOC);
     expect(d.title).toBe('El ciclo del agua');
-    expect(d.cards.map((c: any) => c.a)).toEqual(expect.arrayContaining(['Evaporación', 'Condensación', 'Precipitación']));
+    expect(d.cards.map(c => c.a)).toEqual(expect.arrayContaining(['Evaporación', 'Condensación', 'Precipitación']));
     // en las tarjetas de definiciones, el concepto no aparece dentro de la pregunta
     for (const term of ['Evaporación', 'Condensación', 'Precipitación']) {
-      const c = d.cards.find((x: any) => x.a === term);
+      const c = d.cards.find(x => x.a === term);
       expect(c!.q.toLowerCase()).not.toContain(term.toLowerCase());
     }
   });
@@ -38,7 +35,7 @@ Función (f): relación que asigna a cada elemento de un conjunto exactamente un
 Precio [USD]: valor expresado en dólares estadounidenses para comparar mercados distintos.`;
     expect(() => processDoc(t)).not.toThrow();
     const d = processDoc(t);
-    expect(d.cards.find((c: any) => c.a === 'C++')?.q).not.toContain('C++');
+    expect(d.cards.find(c => c.a === 'C++')?.q).not.toContain('C++');
   });
   it('corta párrafos gigantes en pedazos manejables', () => {
     const long = Array.from({ length: 60 }, (_, i) => `Esta es la oración número ${i} del texto larguísimo.`).join(' ');

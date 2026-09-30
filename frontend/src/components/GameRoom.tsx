@@ -16,6 +16,12 @@ import ArcadeOverlay, { type OverlaySpec } from '@/components/views/arcade/Arcad
 import { gameTabs } from '@/lib/games';
 import { clampGarbage, decideEnd, pickEliminated, resolveColor, standings as rankStandings } from '@/lib/roomLogic';
 import { newestMetas, RoomMembers, sameMembers } from '@/lib/roomSync';
+import { Arcade } from '@/lib/arcade/engine';
+import type { Snapshot } from '@/lib/arcade/types';
+import { TypeBox } from '@/lib/tecla/typebox';
+import { VOCAB, wordGen } from '@/lib/tecla/data/words';
+import { setConsumer } from '@/lib/tecla/input';
+import { History } from '@/lib/tecla/history';
 
 type GameKey = 'bombas' | 'runner' | 'caen' | 'torre' | 'royale';
 type Diff = 'facil' | 'medio' | 'dificil';
@@ -52,8 +58,8 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const chRef = useRef<RealtimeChannel | null>(null);
   const meRef = useRef<Player | null>(null);
   const playersRef = useRef<Player[]>([]);
-  const gameRef = useRef<any>(null);
-  const royaleRef = useRef<{ box: any; timer: number | null; round: number; base: number; t0: number } | null>(null);
+  const gameRef = useRef<Arcade | null>(null);
+  const royaleRef = useRef<{ box: TypeBox; timer: number | null; round: number; base: number; t0: number } | null>(null);
   const activeRef = useRef<StartPayload | null>(null);
   const endSent = useRef(0);
   const lastTrack = useRef(0);
@@ -82,7 +88,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const [ovSpec, setOvSpec] = useState<OverlaySpec | null>(null); // avisos del juego (ganaste, quedaste afuera…)
 
   // depuración en desarrollo: window.__teclaRoom
-  if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') (window as any).__teclaRoom = { meRef, playersRef, gameRef, chRef };
+  if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') (window as unknown as { __teclaRoom: unknown }).__teclaRoom = { meRef, playersRef, gameRef, chRef };
 
   /* ---------- mensajes: todos llevan quién los manda; los de control solo valen si vienen del anfitrión ---------- */
   const send = useCallback((event: string, payload: Record<string, unknown>) => {
@@ -139,16 +145,14 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
 
   const finish = useCallback(async (payload: { winner?: string | null; coop?: boolean; score?: number; wave?: number }) => {
     setPhase('over'); setWinner(payload.winner ?? null);
-    const input = await import('@/lib/tecla/input');
     if (payload.coop) { setCoopSum({ score: payload.score || 0, wave: payload.wave || 0 }); gameRef.current?.endRemote?.(payload); }
     else if (payload.winner && payload.winner === meRef.current?.id) {
       if (activeRef.current?.game === 'royale') {
         stopRoyale();
-        const { History } = await import('@/lib/tecla/history');
         History.record({ t: 'comp', mode: 'battle royale online', win: true, detail: `ganaste en la sala ${code}`, pts: 220 });
       } else gameRef.current?.winMp?.();
     } else if (activeRef.current?.game === 'royale') stopRoyale();
-    input.setConsumer(null);
+    setConsumer(null);
     if (meRef.current?.id === playersRef.current[0]?.id) track({ cfg: { ...(meRef.current!.cfg as Cfg), phase: 'over' } }, true);
   }, [code, track]);
 
@@ -160,8 +164,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     setSpectating(!inRoster);
     track({ round: p.round, alive: inRoster, lives: 0, score: 0, level: 0, deadAt: null, rr: 0, rc: 0 }, true);
     gameRef.current?.destroy?.(); gameRef.current = null; stopRoyale();
-    const input = await import('@/lib/tecla/input');
-    input.setConsumer({});
+    setConsumer({});
     setPhase('countdown');
     let n = 3; setCount(n);
     await new Promise<void>(res => { const iv = setInterval(() => { n--; setCount(n); if (n <= 0) { clearInterval(iv); res(); } }, 700); });
@@ -169,11 +172,9 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     if (!inRoster) return;
 
     if (p.game === 'royale') {
-      const [{ TypeBox }, words] = await Promise.all([import('@/lib/tecla/typebox'), import('@/lib/tecla/data/words')]);
-      const list = words.VOCAB[p.diff] || words.VOCAB.medio;
-      const gen = words.wordGen(p.seed, list);
+      const gen = wordGen(p.seed, VOCAB[p.diff] || VOCAB.medio);
       const box = new TypeBox(boxRef.current!, { onInput: () => { const r = royaleRef.current; if (r) track({ rc: box.counts().correct - r.base, rr: r.round }); } });
-      (box as any).load(gen(80), { extend: gen });
+      box.load(gen(80), { extend: gen });
       const state = { box, timer: null as number | null, round: 1, base: 0, t0: Date.now() };
       royaleRef.current = state;
       state.timer = window.setInterval(() => {
@@ -186,12 +187,11 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
           r.round = round; r.base = box.counts().correct;
         }
       }, 100);
-      input.setConsumer({ char: (c: string) => box.char(c), back: (x: boolean) => box.back(x) });
+      setConsumer({ char: c => box.char(c), back: x => box.back(x) });
       requestAnimationFrame(() => box.refresh());
       return;
     }
 
-    const { Arcade } = await import('@/lib/tecla/views/arcade');
     setOvSpec(null);
     const g = new Arcade(stageRef.current!, { overlay: (sp: OverlaySpec | null) => setOvSpec(sp ? { ...sp } : null) });
     gameRef.current = g;
@@ -209,7 +209,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
         send('garbage', { to, n });
       },
       onHit: (id: number) => send('hit', { id }),
-      onSnapshot: (sn: Record<string, unknown>) => send('snap', sn),
+      onSnapshot: (sn: Snapshot) => send('snap', { ...sn }),
       onEnd: (sum: { score: number; wave: number }) => send('end', { coop: true, ...sum }),
     });
     track({ lives: g.lives, score: 0, level: 1 }, true);
@@ -263,7 +263,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
         if (!fromHost(payload)) return;
         if (payload.id === meRef.current?.id) {
           stopRoyale(); track({ alive: false, deadAt: Date.now() }, true);
-          import('@/lib/tecla/input').then(m => m.setConsumer(null));
+          setConsumer(null);
         }
       });
       ch.on('broadcast', { event: 'end' }, ({ payload }) => { if (fromHost(payload)) finish(payload); });
@@ -294,14 +294,12 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       refresh(); checkRoundHost();
     }, 1000);
 
-    import('@/lib/tecla/history').then(({ History }) => {
-      if (cancelled) return;
-      const id = seatId(History.user?.id || guestId());
-      const nick = History.user?.name || guestNick();
-      setName(nick);
-      meRef.current = { id, name: nick, color: '', joinedAt: Date.now(), round: 0, alive: false, lives: 0, score: 0, level: 0, deadAt: null, cfg: { game: initialGame, diff: 'medio', pub: initialPublic, phase: 'lobby', round: 0 } };
-      connect();
-    });
+    // mi asiento: la cuenta si hay sesión, si no un id de invitado guardado en el navegador
+    const id = seatId(History.user?.id || guestId());
+    const nick = History.user?.name || guestNick();
+    setName(nick);
+    meRef.current = { id, name: nick, color: '', joinedAt: Date.now(), round: 0, alive: false, lives: 0, score: 0, level: 0, deadAt: null, cfg: { game: initialGame, diff: 'medio', pub: initialPublic, phase: 'lobby', round: 0 } };
+    connect();
     return () => {
       cancelled = true;
       if (retry) clearTimeout(retry);
@@ -314,7 +312,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       if (wasHost && playersRef.current.length <= 1) closeRoom(code, roomToken(code, inheritedTok.current));
       const ch = chRef.current; chRef.current = null;
       if (ch) sb.removeChannel(ch);
-      import('@/lib/tecla/input').then(m => m.setConsumer(null));
+      setConsumer(null);
     };
   }, [code, begin, finish, initialGame, initialPublic, track, refresh, sendSt, fromHost, fromRoster]);
 

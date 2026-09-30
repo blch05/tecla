@@ -1,17 +1,31 @@
-// @ts-nocheck — módulo portado del prototipo; pendiente de tipar (ver README)
 import { h } from '@/lib/tecla/utils';
 
 /* =========================================================
    gráficos simples en SVG
    ========================================================= */
-export function niceStep(v) { const p = 10 ** Math.floor(Math.log10(Math.max(v, 1e-9))), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
-export function lineChart(series, { marks = [], xl = i => i + 1, H = 190, dots = false } = {}) {
+export interface Series { v: number[]; cls: string }
+export interface ChartOpts {
+  /** marca (×) arriba de cada punto con valor verdadero, p. ej. segundos con errores */
+  marks?: (number | boolean)[];
+  xl?: (i: number) => string | number;
+  H?: number;
+  /** punto destacado en el último valor de la primera serie */
+  dots?: boolean;
+}
+
+/** Redondea hacia arriba a 1, 2 o 5 × 10ⁿ: pasos "lindos" para el eje Y. */
+export function niceStep(v: number) {
+  const p = 10 ** Math.floor(Math.log10(Math.max(v, 1e-9))), n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+export function lineChart(series: Series[], { marks = [], xl = i => i + 1, H = 190, dots = false }: ChartOpts = {}): Element {
   const W = 640, pl = 36, pr = 10, pt = 12, pb = 24;
   const n = Math.max(...series.map(s => s.v.length));
   if (n < 2) return h('p', { class: 'sub', text: 'Todavía no hay suficientes datos para graficar.' });
   const vals = series.flatMap(s => s.v);
   const step = niceStep(Math.max(10, ...vals) / 4); const ymax = Math.ceil(Math.max(10, ...vals) / step) * step;
-  const x = i => pl + (W - pl - pr) * i / (n - 1), y = v => pt + (H - pt - pb) * (1 - v / ymax);
+  const x = (i: number) => pl + (W - pl - pr) * i / (n - 1), y = (v: number) => pt + (H - pt - pb) * (1 - v / ymax);
   let s = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="gráfico">`;
   for (let v = 0; v <= ymax + 1e-9; v += step) s += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${pl - 7}" y="${y(v) + 4}" class="ax" text-anchor="end">${Math.round(v)}</text>`;
   const every = Math.max(1, Math.ceil(n / 8));
@@ -23,5 +37,6 @@ export function lineChart(series, { marks = [], xl = i => i + 1, H = 190, dots =
     if (k === 0 && dots) { const li = se.v.length - 1; s += `<circle class="dot" cx="${x(li)}" cy="${y(se.v[li])}" r="4.5"/>`; }
   });
   marks.forEach((m, i) => { if (m) s += `<text x="${x(i)}" y="${pt + 4}" class="mk" text-anchor="middle">×</text>`; });
-  const wrap = h('div'); wrap.innerHTML = s + '</svg>'; return wrap.firstChild;
+  const wrap = h('div'); wrap.innerHTML = s + '</svg>';
+  return wrap.firstElementChild!;
 }

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /* historial: guardado local, sincronización con Supabase y sus casos límite */
 const upsert = vi.fn();
 const fakeSb = { from: vi.fn(() => ({ upsert })), rpc: vi.fn(), auth: { signOut: vi.fn() } };

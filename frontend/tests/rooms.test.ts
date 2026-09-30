@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 const rpc = vi.fn();
 vi.mock('@/lib/supabase/client', () => ({ getSupabase: () => ({ rpc }) }));
 

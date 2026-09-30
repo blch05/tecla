@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { EFFECT, SLOTS } from '@/lib/shop/catalog';
 import { PREMIUM } from '@/lib/theme';
+import { palette } from '@/lib/shop/palette';
 
 // el catálogo vive en la migración (la base decide precios); la página tiene que saber dibujar cada objeto
 const mig = (f: string) => readFileSync(resolve(process.cwd(), '../backend/supabase/migrations/' + f), 'utf8');
@@ -57,8 +58,7 @@ describe('tienda: segunda tanda', () => {
 });
 
 describe('paletas generadas (culori)', () => {
-  it('arma colores hex válidos y fondos claros en modo claro', async () => {
-    const { palette } = await import('@/lib/shop/palette');
+  it('arma colores hex válidos y fondos claros en modo claro', () => {
     const lum = (h: string) => { const [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); return (r + g + b) / 3; };
     for (const p of PREMIUM.filter(x => x.gen)) {
       const v = palette(p.color, 'light');

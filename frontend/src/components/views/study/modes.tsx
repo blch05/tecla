@@ -55,7 +55,7 @@ export function HuecosMode({ doc, name, desc, hit }: ModeProps) {
   const n = doc.paras.length;
   const firstWith = (from: number) => { for (let d = 0; d < n; d++) { const p = (from + d + n) % n; if (pickBlanks(doc.paras[p], doc.score).length) return p; } return (from + n) % n; };
   const [pi, setPi] = useState(() => firstWith(0));
-  const blanks = useMemo(() => pickBlanks(doc.paras[pi], doc.score) as { w: string; i: number }[], [pi, doc]);
+  const blanks = useMemo(() => pickBlanks(doc.paras[pi], doc.score), [pi, doc]);
   const [bi, setBi, biRef] = useStateRef(0), [buf, setBuf, bufRef] = useStateRef(''), [res, setRes] = useState<{ r: Mark; typed: string }[]>([]);
   const [tot, setTot] = useState({ ok: 0, casi: 0, mal: 0 });
   const next = () => { setPi(firstWith(pi + 1)); setBi(0); setBuf(''); setRes([]); };
@@ -168,7 +168,7 @@ export function ResumenMode({ doc, name, desc, hit }: ModeProps) {
   useEffect(() => { if (phase === 'write') taRef.current?.focus(); }, [phase]);
   const nextP = () => { setPi((pi + 1) % n); setPhase('read'); setTxt(''); setResult(null); };
   const evaluate = () => {
-    const kws = paraKeywords(p, doc.score) as string[], typed = tokens(txt).map((x: any) => norm(x.w));
+    const kws = paraKeywords(p, doc.score), typed = tokens(txt).map(x => norm(x.w));
     const has = (kw: string) => { const k = norm(kw), pre = k.slice(0, Math.min(k.length, 6)); return typed.some((t: string) => t === k || (k.length >= 6 && t.startsWith(pre))); };
     const found = kws.filter(has), miss = kws.filter(k => !has(k)), pct = kws.length ? found.length / kws.length * 100 : 0;
     setScores(s => [...s, pct]); hit(pct >= 50, Math.round(pct / 10));
@@ -178,7 +178,7 @@ export function ResumenMode({ doc, name, desc, hit }: ModeProps) {
   useKeys(phase === 'write' ? null : { enter: () => (phase === 'read' ? setPhase('write') : nextP()), tab: () => { if (phase === 'read') nextP(); } });
   const highlighted = useMemo(() => {
     if (!result) return null;
-    const kws = paraKeywords(p, doc.score) as string[]; if (!kws.length) return p;
+    const kws = paraKeywords(p, doc.score); if (!kws.length) return p;
     const re = new RegExp(`\\b(${kws.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'giu');
     const out: React.ReactNode[] = []; let last = 0;
     for (const m of p.matchAll(re)) { out.push(p.slice(last, m.index)); out.push(<mark key={m.index}>{m[0]}</mark>); last = (m.index || 0) + m[0].length; }
