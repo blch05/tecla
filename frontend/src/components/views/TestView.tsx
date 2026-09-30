@@ -99,7 +99,7 @@ export default function TestView() {
     celebrate(newPb ? 'record' : 'fin');
     if (isPack(c.sound)) playPack(c.sound, 'end');
     setRes({ wpm: s.wpm, acc: s.acc, raw: s.raw, cons: s.cons, secs: s.secs, correct: s.correct, all: s.all, chart, slow, label: label + (c.weak ? ' · débiles' : ''), newPb, pb });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // cargar los módulos y armar la caja de tipeo
   useEffect(() => {
@@ -123,9 +123,10 @@ export default function TestView() {
       input.setConsumer(consumer.current);
       restart(undefined, true); // al entrar: contra tu récord (si el fantasma está activado)
     });
+    const e = eng.current; // el objeto del ref no se reemplaza nunca, solo sus campos
     return () => {
       alive = false;
-      const b = eng.current.box; if (b?.t0 && !b.done) b.stop();
+      const b = e.box; if (b?.t0 && !b.done) b.stop();
       M.current?.setConsumer(null);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

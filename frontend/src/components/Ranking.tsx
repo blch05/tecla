@@ -79,7 +79,7 @@ export default function Ranking() {
             {podium.map(r => (
               <Link key={r.username} href={`/u/${r.username}`} className={`pod pod-${r.rank <= 3 ? r.rank : 3}` + (r.username === me ? ' me' : '')}>
                 <span className="pod-rank">{r.rank}º</span>
-                <span className="avatar">{/* eslint-disable-next-line @next/next/no-img-element */}{r.avatar_url ? <img src={r.avatar_url} alt="" referrerPolicy="no-referrer" /> : <span>{(r.display_name || r.username)[0]?.toUpperCase()}</span>}</span>
+                <span className="avatar">{r.avatar_url ? <img src={r.avatar_url} alt="" referrerPolicy="no-referrer" /> : <span>{(r.display_name || r.username)[0]?.toUpperCase()}</span>}</span>
                 <b className="pod-name">{r.display_name || r.username}</b>
                 <span className="pod-val"><CountUp to={Math.round(r.value)} duration={1} separator="." /> {unit}</span>
                 {r.accuracy != null && <span className="hint">{Math.round(r.accuracy)}% precisión</span>}

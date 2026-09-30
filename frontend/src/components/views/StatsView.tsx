@@ -39,7 +39,8 @@ export default function StatsView() {
   }, []);
   useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(false), 4000); return () => clearTimeout(t); }, [sure]);
 
-  const hist: HistRow[] = useMemo(() => (m ? (m.store.get('hist', []) as HistRow[]).filter(x => !x.weak) : []), [m, ver]);
+  // `ver` cambia cuando se guarda o borra una partida: fuerza a releer el historial del almacenamiento
+  const hist: HistRow[] = useMemo(() => (m ? (m.store.get('hist', []) as HistRow[]).filter(x => !x.weak) : []), [m, ver]); // eslint-disable-line react-hooks/exhaustive-deps
   const recent = hist.slice(-40), last10 = hist.slice(-10);
   const chart = useMemo(() => (m ? m.lineChart([{ v: recent.map(x => x.wpm), cls: 'ln' }], { H: 170, dots: true, xl: (i: number) => hist.length - recent.length + i + 1 }) : null), [m, hist]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!m) return null;

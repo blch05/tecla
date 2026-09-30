@@ -89,10 +89,10 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
     chRef.current?.send({ type: 'broadcast', event, payload: { ...payload, from: meRef.current?.id } });
   }, []);
   // la lista de jugadores con mi estado local (la presencia puede llegar tarde o no incluirme por un instante)
-  const withMe = (list: Player[]) => { const m = meRef.current; return m ? [...list.filter(p => p.id !== m.id), m].sort((a, b) => a.joinedAt - b.joinedAt) : list; };
-  const hostNowId = () => roundHostRef.current || playersRef.current[0]?.id;
-  const fromHost = (p: { from?: string } | null | undefined) => !!p?.from && p.from === hostNowId();
-  const fromRoster = (p: { from?: string } | null | undefined) => !!p?.from && !!activeRef.current?.roster.some(r => r.id === p.from);
+  // (estos helpers solo leen refs: son estables y los efectos pueden depender de ellos sin re-suscribirse)
+  const withMe = useCallback((list: Player[]) => { const m = meRef.current; return m ? [...list.filter(p => p.id !== m.id), m].sort((a, b) => a.joinedAt - b.joinedAt) : list; }, []);
+  const fromHost = useCallback((p: { from?: string } | null | undefined) => !!p?.from && p.from === (roundHostRef.current || playersRef.current[0]?.id), []);
+  const fromRoster = useCallback((p: { from?: string } | null | undefined) => !!p?.from && !!activeRef.current?.roster.some(r => r.id === p.from), []);
 
   /* ---------- presencia ---------- */
   // la lista de jugadores sale de RoomMembers (presencia + estados + margen de 5 s)
@@ -213,7 +213,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       onEnd: (sum: { score: number; wave: number }) => send('end', { coop: true, ...sum }),
     });
     track({ lives: g.lives, score: 0, level: 1 }, true);
-  }, [track]);
+  }, [track, send]);
 
   /* ---------- conexión a la sala (con reconexión automática) ---------- */
   useEffect(() => {
@@ -316,7 +316,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       if (ch) sb.removeChannel(ch);
       import('@/lib/tecla/input').then(m => m.setConsumer(null));
     };
-  }, [code, begin, finish, initialGame, initialPublic, track, refresh, sendSt]);
+  }, [code, begin, finish, initialGame, initialPublic, track, refresh, sendSt, fromHost, fromRoster]);
 
   /* ---------- el anfitrión publica la sala (para la lista de salas públicas) ---------- */
   useEffect(() => {
@@ -343,7 +343,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       if (v.end && endSent.current !== active.round) { endSent.current = active.round; send('end', { winner: v.winner }); }
     }, 1200);
     return () => clearTimeout(t);
-  }, [amRoundHost, phase, active, players]);
+  }, [amRoundHost, phase, active, players, send, withMe]);
 
   useEffect(() => {
     if (!amRoundHost || phase !== 'playing' || active?.game !== 'royale') return;
@@ -359,7 +359,7 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
       }, 1000);
     }, 200);
     return () => clearInterval(iv);
-  }, [amRoundHost, phase, active]);
+  }, [amRoundHost, phase, active, send, withMe]);
 
   useEffect(() => {
     if (!amRoundHost || phase !== 'playing' || active?.game !== 'torre') return;
@@ -394,9 +394,9 @@ export default function GameRoom({ code, initialGame, initialPublic }: { code: s
   const copy = async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/sala/${code}`); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { window.prompt('Copiá el link de la sala:', `${window.location.origin}/sala/${code}`); } };
 
   // si otro jugador vuelve al lobby (anfitrión), todos vuelven
-  useEffect(() => { if (!isHost && cfg.phase === 'lobby' && phase === 'over') backToLobby(); }); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!isHost && cfg.phase === 'lobby' && phase === 'over') backToLobby(); });
 
-  const roster = active?.roster || [];
+  const roster = useMemo(() => active?.roster || [], [active]);
   const standings = useMemo(() => {
     if (!active) return [];
     return rankStandings(players, roster, active.round) as Player[];

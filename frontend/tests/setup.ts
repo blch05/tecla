@@ -5,6 +5,6 @@ if (!globalThis.requestAnimationFrame) {
 }
 if (!globalThis.crypto?.randomUUID) {
   // @ts-expect-error polyfill mínimo para tests
-  globalThis.crypto = { ...globalThis.crypto, randomUUID: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => ((Math.random() * 16) | 0).toString(16)) };
+  globalThis.crypto = { ...globalThis.crypto, randomUUID: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, () => ((Math.random() * 16) | 0).toString(16)) };
 }
 beforeEach(() => { localStorage.clear(); });

@@ -69,7 +69,6 @@ export default function Header() {
       <Link className="auth" href={user ? '/perfil' : '/login'}>
         {user ? (
           user.avatarUrl
-            // eslint-disable-next-line @next/next/no-img-element
             ? <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
             : <span className="ini">{user.name[0]?.toUpperCase()}</span>
         ) : null}

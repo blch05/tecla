@@ -84,7 +84,8 @@ export default function ShopView() {
   const [seed, setSeed] = useState('vos');
   const [sound, setSound] = useState('off');
   useEffect(() => setSound(testSound()), []);
-  const st = shop.state, items = shop.items || [];
+  const st = shop.state;
+  const items = useMemo(() => shop.items || [], [shop.items]);
 
   // movimientos recientes y nombre (para la vista previa del marco)
   useEffect(() => {

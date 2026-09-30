@@ -16,7 +16,6 @@ export default function Avatar({ url, name, style, seed, frame, className = '' }
   const src = gen || url;
   return (
     <div className={('avatar ' + className).trim()} data-frame={frame || undefined}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       {src ? <img src={src} alt="" referrerPolicy="no-referrer" className={gen ? 'gen' : undefined} /> : <span>{name[0]?.toUpperCase() || 'V'}</span>}
     </div>
   );
