@@ -8,14 +8,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
-import { seatId } from '@/lib/rooms';
+import { guestId, guestNick, seatId } from '@/lib/rooms';
 import { newestMetas, RoomMembers, sameMembers } from '@/lib/roomSync';
 
 export interface Member { id: string; name: string; color: string; joinedAt: number; v?: number; cfg?: Record<string, unknown> }
-type Handler = (payload: any) => void;
+/** Lo que llega por la red: cada manejador declara la forma que espera (y valida lo que usa, porque viene de otro navegador). */
+export type Wire = { from?: string; to?: string };
+type Handler = (payload: never) => void;
 
-const guestId = () => { try { let id = localStorage.getItem('tecla:guest'); if (!id) { id = crypto.randomUUID(); localStorage.setItem('tecla:guest', id); } return id; } catch { return crypto.randomUUID(); } };
-const guestNick = () => { try { return localStorage.getItem('tecla:nick') || 'invitado-' + Math.floor(Math.random() * 900 + 100); } catch { return 'invitado'; } };
 
 export function useRoom(code: string, initialCfg: Record<string, unknown>, handlers: Record<string, Handler>) {
   const chRef = useRef<RealtimeChannel | null>(null);
@@ -63,15 +63,15 @@ export function useRoom(code: string, initialCfg: Record<string, unknown>, handl
       ch.on('presence', { event: 'sync' }, () => {
         membersRef.current.presence(newestMetas(ch.presenceState() as Record<string, Member[]>));
         if (meRef.current) membersRef.current.state(meRef.current);
-        refresh(); handlersRef.current.presence?.(listRef.current);
+        refresh(); handlersRef.current.presence?.(listRef.current as never);
       });
       ch.on('broadcast', { event: 'st' }, ({ payload }) => {
         if (!payload || typeof payload.id !== 'string' || typeof payload.joinedAt !== 'number' || payload.id === meRef.current?.id) return;
         membersRef.current.state(payload as Member); refresh();
       });
-      ch.on('broadcast', { event: '*' }, ({ event, payload }) => { if (event !== 'st') handlersRef.current[event]?.(payload); });
+      ch.on('broadcast', { event: '*' }, ({ event, payload }) => { if (event !== 'st') handlersRef.current[event]?.(payload as never); });
       ch.subscribe(status => {
-        if (status === 'SUBSCRIBED') { setError(''); setReady(true); ch.track(meRef.current!); ch.send({ type: 'broadcast', event: 'st', payload: meRef.current }); handlersRef.current.joined?.(null); return; }
+        if (status === 'SUBSCRIBED') { setError(''); setReady(true); ch.track(meRef.current!); ch.send({ type: 'broadcast', event: 'st', payload: meRef.current }); handlersRef.current.joined?.(null as never); return; }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           if (cancelled || chRef.current !== ch) return;
           setError('Se cortó la conexión con la sala. Reconectando…'); setReady(false);

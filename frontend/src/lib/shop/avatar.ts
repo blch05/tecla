@@ -1,6 +1,10 @@
 /* Avatares generados con DiceBear a partir de tu cuenta (mismo usuario → mismo dibujo).
    Solo estilos con licencia libre para usar (CC0 o libre uso comercial); cada uno se descarga aparte. */
-const STYLES: Record<string, () => Promise<any>> = {
+import type { Style } from '@dicebear/core';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- cada estilo de DiceBear tiene sus propias opciones
+type AnyStyle = Style<any>;
+const STYLES: Record<string, () => Promise<AnyStyle>> = {
   pixel: () => import('@dicebear/collection/async').then(m => m.pixelArt()),
   formas: () => import('@dicebear/collection/async').then(m => m.shapes()),
   pulgar: () => import('@dicebear/collection/async').then(m => m.thumbs()),

@@ -27,7 +27,7 @@ export const Shop = {
 
   init() {
     if (this.started || typeof window === 'undefined') return; this.started = true;
-    if (process.env.NODE_ENV !== 'production') (window as any).__teclaShop = this; // depuración en desarrollo
+    if (process.env.NODE_ENV !== 'production') (window as unknown as { __teclaShop: unknown }).__teclaShop = this; // depuración en desarrollo
     // la tipografía se pide ya, con lo guardado de la última vez (antes de saber si hay sesión)
     const saved = cosmetics().fuente; if (saved) import('@/lib/shop/fonts').then(f => f.applyFont(saved));
     import('@/lib/tecla/history').then(({ History }) => {

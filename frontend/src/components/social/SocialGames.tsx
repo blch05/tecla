@@ -8,12 +8,14 @@ import { MAX_CLUES, MAX_TRIES } from '@/lib/social/host';
 import type { View, ById } from './SocialRoom';
 
 type Act = (a: Record<string, unknown>) => void;
+/** respuesta privada del anfitrión a una jugada (solo le llega a quien jugó) */
+export interface HostReply { event: string; payload: { error?: string; g?: string; marks?: Mark[] }; n: number }
 const stop = (e: React.KeyboardEvent) => e.stopPropagation();
 
 /* =================== palabra oculta =================== */
 const KEYS = ['qwertyuiop', 'asdfghjklñ', 'zxcvbnm'];
 
-export function OcultaGame({ view, me, act, reply, byId }: { view: View; me: string; act: Act; reply: { event: string; payload: any; n: number } | null; byId: ById }) {
+export function OcultaGame({ view, me, act, reply, byId }: { view: View; me: string; act: Act; reply: HostReply | null; byId: ById }) {
   const o = view.o!, len = o.len;
   const [mine, setMine] = useState<{ g: string; marks: Mark[] }[]>([]);
   const [cur, setCur] = useState('');
@@ -26,7 +28,7 @@ export function OcultaGame({ view, me, act, reply, byId }: { view: View; me: str
     if (!reply || reply.event !== 'marks') return;
     setWait(false);
     if (reply.payload.error) { setMsg(reply.payload.error); return; }
-    setMine(m => [...m, { g: reply.payload.g, marks: reply.payload.marks }]); setCur('');
+    setMine(m => [...m, { g: reply.payload.g || '', marks: reply.payload.marks || [] }]); setCur('');
   }, [reply]);
   const solved = o.solved[me] != null, out = mine.length >= MAX_TRIES || solved || view.phase !== 'playing';
   const submit = () => { if (out || wait) return; if (norm(cur).length !== len) { setMsg(`Tiene que tener ${len} letras.`); return; } setMsg(''); setWait(true); act({ type: 'guess', g: cur }); };
@@ -124,13 +126,13 @@ export function SopaGame({ view, me, act, byId }: { view: View; me: string; act:
 }
 
 /* =================== pistas =================== */
-export function PistasGame({ view, me, act, reply, secret, byId }: { view: View; me: string; act: Act; reply: { event: string; payload: any; n: number } | null; secret: string | null; byId: ById }) {
+export function PistasGame({ view, me, act, reply, secret, byId }: { view: View; me: string; act: Act; reply: HostReply | null; secret: string | null; byId: ById }) {
   const p = view.p!, giver = p.giver === me, playing = view.phase === 'playing';
   const [text, setText] = useState('');
   const [err, setErr] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   useEffect(() => { setText(''); setErr(''); }, [view.round]);
-  useEffect(() => { if (reply?.event === 'clue-error') setErr(reply.payload.error); }, [reply]);
+  useEffect(() => { if (reply?.event === 'clue-error') setErr(reply.payload.error || ''); }, [reply]);
   useEffect(() => { feedRef.current?.scrollTo({ top: 1e6 }); }, [p.guesses.length]);
   const submit = () => {
     const t = text.trim(); if (!t) return; setErr('');

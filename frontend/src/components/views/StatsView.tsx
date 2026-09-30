@@ -6,13 +6,12 @@ import { useRouter } from 'next/navigation';
 import Tabs from '@/components/ui/Tabs';
 import DomNode from '@/components/ui/DomNode';
 import PageHeader from '@/components/ui/PageHeader';
+import { avg, baseKey, store, toast } from '@/lib/tecla/utils';
+import { KS, weakData, type KeyStat } from '@/lib/tecla/keystats';
+import { lineChart } from '@/lib/tecla/charts';
+import { setConsumer } from '@/lib/tecla/input';
+import { testHistory } from '@/lib/tecla/testHistory';
 
-interface Mods {
-  store: any; avg: (a: number[]) => number; baseKey: (k: string) => string;
-  KS: any; weakData: () => { bis: { b: string; ms: number; err: number }[] };
-  lineChart: (series: any[], opts: any) => Node;
-}
-interface HistRow { wpm: number; acc: number; weak?: boolean }
 const ROWS = ['qwertyuiop', 'asdfghjklñ', 'zxcvbnm'];
 
 /** Tendencia de los últimos tests (regresión lineal): cuánto mejorás por test y cuándo llegás a la próxima decena. */
@@ -29,42 +28,42 @@ export function projection(ys: number[]) {
 
 export default function StatsView() {
   const router = useRouter();
-  const [m, setM] = useState<Mods | null>(null);
+  // todo sale de localStorage: se lee recién en el navegador (así el HTML del servidor coincide)
+  const [ready, setReady] = useState(false);
   const [mode, setMode] = useState<'err' | 'ms'>('err');
   const [sure, setSure] = useState(false);
   const [ver, bump] = useState(0);
   useEffect(() => {
-    Promise.all([import('@/lib/tecla/utils'), import('@/lib/tecla/keystats'), import('@/lib/tecla/charts'), import('@/lib/tecla/input')])
-      .then(([u, k, c, input]) => { input.setConsumer(null); setM({ store: u.store, avg: u.avg, baseKey: u.baseKey, KS: k.KS, weakData: k.weakData, lineChart: c.lineChart }); });
+    setConsumer(null); setReady(true);
   }, []);
   useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(false), 4000); return () => clearTimeout(t); }, [sure]);
 
   // `ver` cambia cuando se guarda o borra una partida: fuerza a releer el historial del almacenamiento
-  const hist: HistRow[] = useMemo(() => (m ? (m.store.get('hist', []) as HistRow[]).filter(x => !x.weak) : []), [m, ver]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hist = useMemo(() => (ready ? testHistory.regular() : []), [ready, ver]); // eslint-disable-line react-hooks/exhaustive-deps
   const recent = hist.slice(-40), last10 = hist.slice(-10);
-  const chart = useMemo(() => (m ? m.lineChart([{ v: recent.map(x => x.wpm), cls: 'ln' }], { H: 170, dots: true, xl: (i: number) => hist.length - recent.length + i + 1 }) : null), [m, hist]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!m) return null;
+  const chart = useMemo(() => (ready ? lineChart([{ v: recent.map(x => x.wpm), cls: 'ln' }], { H: 170, dots: true, xl: (i: number) => hist.length - recent.length + i + 1 }) : null), [ready, hist]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!ready) return null;
 
   const best = hist.reduce((a, x) => Math.max(a, x.wpm), 0);
   // teclas: errores o lentitud, agrupando las acentuadas con su letra base
-  const agg: Record<string, { n: number; e: number; t: number; c: number }> = {};
-  Object.entries(m.KS.keys as Record<string, { n: number; e: number; t: number; c: number }>).forEach(([k, s]) => {
-    const b = m.baseKey(k), a = (agg[b] ||= { n: 0, e: 0, t: 0, c: 0 }); a.n += s.n; a.e += s.e; a.t += s.t; a.c += s.c;
+  const agg: Record<string, KeyStat> = {};
+  Object.entries(KS.keys).forEach(([k, s]) => {
+    const b = baseKey(k), a = (agg[b] ||= { n: 0, e: 0, t: 0, c: 0 }); a.n += s.n; a.e += s.e; a.t += s.t; a.c += s.c;
   });
   const vals: Record<string, number> = {};
   Object.entries(agg).filter(([, s]) => s.n >= 3).forEach(([k, s]) => { vals[k] = mode === 'err' ? s.e / s.n : (s.c ? s.t / s.c : 0); });
   const arr = Object.values(vals).filter(x => x > 0), mx = Math.max(...arr, 0), mn = mode === 'err' ? 0 : Math.min(...arr, mx);
-  const slow = m.weakData().bis.filter(b => b.ms).sort((a, b) => (b.ms + b.err * 800) - (a.ms + a.err * 800)).slice(0, 10);
+  const slow = weakData().bis.filter(b => b.ms).sort((a, b) => (b.ms + b.err * 800) - (a.ms + a.err * 800)).slice(0, 10);
   const hc = mode === 'err' ? 'var(--err)' : 'var(--accent)';
 
   const reset = () => {
     if (!sure) { setSure(true); return; }
     Object.keys(localStorage).filter(k => k.startsWith('tecla:')).forEach(k => { try { localStorage.removeItem(k); } catch {} });
-    m.KS.keys = {}; m.KS.bi = {}; setSure(false); bump(x => x + 1);
-    import('@/lib/tecla/utils').then(u => u.toast('Progreso borrado'));
+    KS.keys = {}; KS.bi = {}; setSure(false); bump(x => x + 1);
+    toast('Progreso borrado');
   };
   // el test lee su configuración del almacenamiento al abrirse
-  const trainWeak = () => { m.store.set('cfg', { ...m.store.get('cfg', {}), weak: true }); router.push('/test'); };
+  const trainWeak = () => { store.set('cfg', { ...store.get('cfg', {}), weak: true }); router.push('/test'); };
 
   return (
     <>
@@ -74,9 +73,9 @@ export default function StatsView() {
       <div className="tiles">
         {[
           ['tests', String(hist.length), ''],
-          ['promedio (últimos 10)', last10.length ? String(Math.round(m.avg(last10.map(x => x.wpm)))) : '—', 'acc'],
+          ['promedio (últimos 10)', last10.length ? String(Math.round(avg(last10.map(x => x.wpm)))) : '—', 'acc'],
           ['mejor marca', best ? String(Math.round(best)) : '—', ''],
-          ['precisión media', last10.length ? Math.round(m.avg(last10.map(x => x.acc))) + '%' : '—', ''],
+          ['precisión media', last10.length ? Math.round(avg(last10.map(x => x.acc))) + '%' : '—', ''],
         ].map(([l, v, c]) => <div key={l} className={'tile ' + c}><span className="lbl">{l}</span><b>{v}</b></div>)}
       </div>
       <div className="two fill">

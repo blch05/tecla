@@ -8,37 +8,33 @@ import Tabs from '@/components/ui/Tabs';
 import PageHeader from '@/components/ui/PageHeader';
 import RoomBrowser from '@/components/RoomBrowser';
 import { useKeys } from '@/lib/useKeys';
-import type { EndResult } from '@/lib/compete/modes';
+import { MODES, type CompeteMode, type EndResult } from '@/lib/compete/modes';
+import { botBase, DIFFS, type BotDiff } from '@/lib/compete/bots';
+import { store } from '@/lib/tecla/utils';
+import { setConsumer } from '@/lib/tecla/input';
+import { History } from '@/lib/tecla/history';
 import { newRoomCode } from '@/lib/rooms';
 
-interface Mode { id: string; name: string; desc: string; bots: boolean; start?: (area: HTMLElement, api: { again: () => void; end: (r: EndResult) => void }) => (() => void) | void }
-const LIVE: Mode = { id: 'live', name: 'en vivo', bots: false, desc: 'Jugá con personas reales: carreras, arcade multijugador y juegos de palabras (palabra oculta, sopa de letras, pistas y tutti frutti). Enter abre una carrera rápida.' };
-const DIFFS: [string, string][] = [['facil', 'fácil'], ['parejo', 'parejo'], ['dificil', 'difícil']];
+const LIVE: CompeteMode = { id: 'live', name: 'en vivo', bots: false, desc: 'Jugá con personas reales: carreras, arcade multijugador y juegos de palabras (palabra oculta, sopa de letras, pistas y tutti frutti). Enter abre una carrera rápida.' };
+const ALL: CompeteMode[] = [LIVE, ...MODES];
 
 export default function CompeteView() {
   const router = useRouter();
-  const [modes, setModes] = useState<Mode[] | null>(null);
   const [cur, setCur] = useState('race');
   const [phase, setPhase] = useState<'pre' | 'play'>('pre');
   const [run, setRun] = useState(0);
   const [end, setEnd] = useState<EndResult | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
-  const store = useRef<any>(null);
 
+  // el último modo elegido (se lee en el navegador para no desentonar con el HTML del servidor)
   useEffect(() => {
-    Promise.all([import('@/lib/compete/modes'), import('@/lib/tecla/utils')]).then(([m, u]) => {
-      store.current = u.store;
-      const all = [LIVE, ...(m.MODES as Mode[])];
-      setModes(all);
-      const saved = u.store.get('compMode', 'race');
-      setCur(all.some(x => x.id === saved) ? saved : 'race');
-    });
+    const saved = store.get('compMode', 'race');
+    setCur(ALL.some(x => x.id === saved) ? saved : 'race');
   }, []);
 
-  const mode = modes?.find(m => m.id === cur);
-  const pick = (id: string) => { setCur(id); store.current?.set('compMode', id); setPhase('pre'); setEnd(null); };
+  const mode = ALL.find(m => m.id === cur) || ALL[1];
+  const pick = (id: string) => { setCur(id); store.set('compMode', id); setPhase('pre'); setEnd(null); };
   const start = useCallback(() => {
-    if (!mode) return;
     if (mode.id === 'live') { router.push('/carrera/' + newRoomCode()); return; }
     setEnd(null); setPhase('play'); setRun(r => r + 1);
   }, [mode, router]);
@@ -46,22 +42,21 @@ export default function CompeteView() {
 
   // arrancar el juego (y volver a arrancarlo con "otra vez")
   useEffect(() => {
-    if (phase !== 'play' || !mode?.start || !areaRef.current) return;
+    if (phase !== 'play' || !mode.start || !areaRef.current) return;
     const area = areaRef.current; area.replaceChildren();
     const stop = mode.start(area, { again, end: r => setEnd(r) });
-    return () => { stop?.(); area.replaceChildren(); };
+    return () => { stop(); area.replaceChildren(); };
   }, [phase, run, mode, again]);
-  useEffect(() => () => { import('@/lib/tecla/input').then(m => m.setConsumer(null)); }, []);
+  useEffect(() => () => setConsumer(null), []);
 
-  if (!modes || !mode) return null;
   return (
     <>
       <PageHeader eyebrow="* — contra bots o personas" title="competir">
-        <Tabs items={modes.map(m => ({ id: m.id, label: m.name }))} value={cur} onChange={pick} label="modos de competir" />
+        <Tabs items={ALL.map(m => ({ id: m.id, label: m.name }))} value={cur} onChange={pick} label="modos de competir" />
       </PageHeader>
       <div className="panel" id="comp-area">
         {phase === 'pre'
-          ? <PreStart mode={mode} onStart={start} go={p => router.push(p)} store={store.current} />
+          ? <PreStart mode={mode} onStart={start} go={p => router.push(p)} />
           : (
             <div className="arena-host">
               <div ref={areaRef} className="arena-area" />
@@ -73,7 +68,7 @@ export default function CompeteView() {
   );
 }
 
-function PreStart({ mode, onStart, go, store }: { mode: Mode; onStart: () => void; go: (p: string) => void; store: any }) {
+function PreStart({ mode, onStart, go }: { mode: CompeteMode; onStart: () => void; go: (p: string) => void }) {
   useKeys({ enter: onStart });
   return (
     <div className="prestart">
@@ -81,7 +76,7 @@ function PreStart({ mode, onStart, go, store }: { mode: Mode; onStart: () => voi
       <h2>{mode.name}</h2>
       <p className="sub">{mode.desc}</p>
       {mode.id === 'live' && <div className="rooms-host"><RoomBrowser go={go} /></div>}
-      {mode.bots && <DiffSelector store={store} />}
+      {mode.bots && <DiffSelector />}
       {mode.id !== 'live' && (
         <div className="row"><button className="btn primary" type="button" onClick={onStart}>empezar</button><span className="hint">o presioná <kbd>enter</kbd></span></div>
       )}
@@ -90,14 +85,14 @@ function PreStart({ mode, onStart, go, store }: { mode: Mode; onStart: () => voi
 }
 
 /** Dificultad de los rivales: se ajustan a tu promedio de los últimos tests. */
-function DiffSelector({ store }: { store: any }) {
-  const [diff, setDiff] = useState<string>(() => store?.get('diff', 'parejo') || 'parejo');
+function DiffSelector() {
+  const [diff, setDiff] = useState<BotDiff>('parejo');
   const [base, setBase] = useState<number | null>(null);
-  useEffect(() => { import('@/lib/compete/bots').then(m => setBase(Math.round(m.botBase()))); }, []);
+  useEffect(() => { setDiff(store.get<BotDiff>('diff', 'parejo')); setBase(Math.round(botBase())); }, []);
   return (
     <div className="row">
       <span className="lbl">rivales</span>
-      <Tabs className="cfgbar" items={DIFFS.map(([id, label]) => ({ id, label }))} value={diff} onChange={id => { setDiff(id); store?.set('diff', id); }} label="dificultad de los rivales" />
+      <Tabs className="cfgbar" items={Object.entries(DIFFS).map(([id, d]) => ({ id, label: d.label }))} value={diff} onChange={id => { setDiff(id as BotDiff); store.set('diff', id); }} label="dificultad de los rivales" />
       <span className="sub" style={{ fontSize: 12.5 }}>se ajustan a tu promedio ({base ?? '…'} ppm) · también cambia el vocabulario</span>
     </div>
   );
@@ -134,12 +129,12 @@ function DailyBoard({ day, wpm, acc }: { day: string; wpm: number; acc: number }
   const [me, setMe] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    import('@/lib/tecla/history').then(async ({ History }) => {
+    (async () => {
       const c = History.mode === 'cloud'; if (!alive) return; setCloud(c); setMe(History.user?.id || null);
       if (!c) return;
       await History.submitDaily(day, wpm, acc);
       const r = await History.dailyTop(day); if (alive) setRows(r);
-    });
+    })();
     return () => { alive = false; };
   }, [day, wpm, acc]);
   return (

@@ -22,12 +22,12 @@ const Kbd = ({ children }: { children: React.ReactNode }) => <kbd>{children}</kb
 /* ---------- tipear el texto ---------- */
 export function CopyMode({ doc, name, desc, hit }: ModeProps) {
   const holder = useRef<HTMLDivElement>(null);
-  const box = useRef<any>(null);
+  const box = useRef<TypeBox | null>(null);
   const [i, setI] = useState(0);
   const [res, setRes] = useState<{ wpm: number; acc: number } | null>(null);
   const n = doc.paras.length, idx = (x: number) => (x + n) % n;
   useEffect(() => {
-    box.current = new TypeBox(holder.current!, { onFinish: (s: any) => { hit(s.acc >= 90, Math.round(s.wpm * s.acc / 200)); setRes({ wpm: s.wpm, acc: s.acc }); } });
+    box.current = new TypeBox(holder.current!, { onFinish: s => { hit(s.acc >= 90, Math.round(s.wpm * s.acc / 200)); setRes({ wpm: s.wpm, acc: s.acc }); } });
     return () => box.current?.stop();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setRes(null); box.current?.load(doc.paras[i].split(/\s+/)); }, [i, doc]);

@@ -9,28 +9,21 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
-import { closeRoom, publishRoom, roomToken, seatId } from '@/lib/rooms';
+import { closeRoom, guestId, guestNick, publishRoom, roomToken, seatId } from '@/lib/rooms';
+import { TypeBox } from '@/lib/tecla/typebox';
+import { passage } from '@/lib/tecla/data/words';
+import { setConsumer } from '@/lib/tecla/input';
+import { History } from '@/lib/tecla/history';
 import { newestMetas, RoomMembers, sameMembers } from '@/lib/roomSync';
 
 interface Racer { id: string; name: string; joinedAt: number; round: number; progress: number; wpm: number; done: boolean; finishMs: number | null; pub?: boolean; tok?: string; v?: number }
 type Phase = 'lobby' | 'countdown' | 'racing' | 'done';
 
-const guestId = () => {
-  try {
-    let id = localStorage.getItem('tecla:guest');
-    if (!id) { id = crypto.randomUUID(); localStorage.setItem('tecla:guest', id); }
-    return id;
-  } catch { return crypto.randomUUID(); }
-};
-const guestNick = () => {
-  try { return localStorage.getItem('tecla:nick') || 'invitado-' + Math.floor(Math.random() * 900 + 100); } catch { return 'invitado'; }
-};
-
 export default function LiveRace({ code, initialPublic = true }: { code: string; initialPublic?: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const chRef = useRef<RealtimeChannel | null>(null);
   const meRef = useRef<Racer | null>(null);
-  const tbRef = useRef<any>(null);
+  const tbRef = useRef<TypeBox | null>(null);
   const lastTrack = useRef(0);
   const racersRef = useRef<Racer[]>([]);
   const [racers, setRacers] = useState<Racer[]>([]);
@@ -77,13 +70,10 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
   }, [refresh, sendSt]);
 
   // arranca una ronda: mismo texto para todos a partir de la semilla
-  const begin = useCallback(async (seed: number, r: number) => {
-    const [{ TypeBox }, words, input, { History }] = await Promise.all([
-      import('@/lib/tecla/typebox'), import('@/lib/tecla/data/words'), import('@/lib/tecla/input'), import('@/lib/tecla/history'),
-    ]);
+  const begin = useCallback((seed: number, r: number) => {
     setRound(r); setMyResult(null); setPhase('countdown');
     track({ round: r, progress: 0, wpm: 0, done: false, finishMs: null }, true);
-    input.setConsumer({});
+    setConsumer({});
     let n = 3; setCount(n);
     const iv = setInterval(() => {
       n--; setCount(n);
@@ -93,7 +83,7 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
       const t0 = Date.now();
       const box = new TypeBox(boxRef.current!, {
         onInput: () => track({ progress: box.progress(), wpm: Math.round(box.wpmNow()) }),
-        onFinish: (s: any) => {
+        onFinish: s => {
           const finishMs = Date.now() - t0;
           track({ progress: 1, wpm: Math.round(s.wpm), done: true, finishMs }, true);
           setPhase('done');
@@ -106,8 +96,8 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
         },
       });
       tbRef.current = box;
-      box.load(words.passage(seed, 28));
-      input.setConsumer({ char: (c: string) => box.char(c), back: (x: boolean) => box.back(x) });
+      box.load(passage(seed, 28));
+      setConsumer({ char: c => box.char(c), back: x => box.back(x) });
       requestAnimationFrame(() => box.refresh());
     }, 700);
   }, [code, track]);
@@ -160,14 +150,11 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
       refresh();
     }, 1000);
 
-    import('@/lib/tecla/history').then(({ History }) => {
-      if (cancelled) return;
-      const id = seatId(History.user?.id || guestId());
-      const nick = History.user?.name || guestNick();
-      setName(nick);
-      meRef.current = { id, name: nick, joinedAt: Date.now(), round: 0, progress: 0, wpm: 0, done: false, finishMs: null, pub: initialPublic };
-      connect();
-    });
+    const id = seatId(History.user?.id || guestId());
+    const nick = History.user?.name || guestNick();
+    setName(nick);
+    meRef.current = { id, name: nick, joinedAt: Date.now(), round: 0, progress: 0, wpm: 0, done: false, finishMs: null, pub: initialPublic };
+    connect();
     return () => {
       cancelled = true;
       if (retry) clearTimeout(retry);
@@ -179,7 +166,7 @@ export default function LiveRace({ code, initialPublic = true }: { code: string;
       if (racersRef.current[0]?.id === meRef.current?.id && racersRef.current.length <= 1) closeRoom(code, roomToken(code, racersRef.current[0]?.tok));
       const ch = chRef.current; chRef.current = null;
       if (ch) sb.removeChannel(ch);
-      import('@/lib/tecla/input').then(m => m.setConsumer(null));
+      setConsumer(null);
     };
   }, [code, begin, initialPublic, refresh, sendSt]);
 

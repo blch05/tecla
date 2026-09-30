@@ -20,6 +20,18 @@ export interface RoomInfo {
 }
 
 
+/* identidad de invitado (sin cuenta): queda guardada en el navegador para conservar el asiento al recargar */
+export function guestId(): string {
+  try {
+    let id = localStorage.getItem('tecla:guest');
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem('tecla:guest', id); }
+    return id;
+  } catch { return crypto.randomUUID(); }
+}
+export function guestNick(): string {
+  try { return localStorage.getItem('tecla:nick') || 'invitado-' + Math.floor(Math.random() * 900 + 100); } catch { return 'invitado'; }
+}
+
 export const newRoomCode = () => Math.random().toString(36).slice(2, 7);
 export const cleanCode = (c: string) => c.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
 export const roomPath = (game: RoomGame, code: string, isPublic = true) =>

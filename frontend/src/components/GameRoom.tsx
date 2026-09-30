@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
-import { closeRoom, publishRoom, roomToken, type RoomGame, seatId } from '@/lib/rooms';
+import { closeRoom, guestId, guestNick, publishRoom, roomToken, type RoomGame, seatId } from '@/lib/rooms';
 import Tabs from '@/components/ui/Tabs';
 import PageHeader from '@/components/ui/PageHeader';
 import ArcadeOverlay, { type OverlaySpec } from '@/components/views/arcade/ArcadeOverlay';
@@ -49,8 +49,6 @@ interface Player {
 }
 interface StartPayload { game: GameKey; diff: Diff; seed: number; round: number; roster: { id: string; name: string; color: string }[] }
 
-const guestId = () => { try { let id = localStorage.getItem('tecla:guest'); if (!id) { id = crypto.randomUUID(); localStorage.setItem('tecla:guest', id); } return id; } catch { return crypto.randomUUID(); } };
-const guestNick = () => { try { return localStorage.getItem('tecla:nick') || 'invitado-' + Math.floor(Math.random() * 900 + 100); } catch { return 'invitado'; } };
 
 export default function GameRoom({ code, initialGame, initialPublic }: { code: string; initialGame: GameKey; initialPublic: boolean }) {
   const stageRef = useRef<HTMLDivElement>(null);

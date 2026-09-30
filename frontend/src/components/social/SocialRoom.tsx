@@ -7,9 +7,9 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { closeRoom, publishRoom, roomToken, type SocialGame, SOCIAL_GAMES } from '@/lib/rooms';
 import { resolveColor } from '@/lib/roomLogic';
-import { act as hostAct, canStart, type GS, newGame, publicView, ranking, tick } from '@/lib/social/host';
-import { useRoom, type Member } from '@/lib/social/useRoom';
-import { OcultaGame, PistasGame, SopaGame, TuttiGame } from './SocialGames';
+import { act as hostAct, type Act, canStart, type GS, newGame, publicView, ranking, tick } from '@/lib/social/host';
+import { useRoom, type Member, type Wire } from '@/lib/social/useRoom';
+import { OcultaGame, PistasGame, SopaGame, TuttiGame, type HostReply } from './SocialGames';
 import Tabs from '@/components/ui/Tabs';
 import PageHeader from '@/components/ui/PageHeader';
 import { GAME_INFO, gameTabs } from '@/lib/games';
@@ -31,7 +31,7 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
   const [view, setView] = useState<View | null>(null);
   const [deadline, setDeadline] = useState(0);
   const [secret, setSecret] = useState<string | null>(null);
-  const [reply, setReply] = useState<{ event: string; payload: any; n: number } | null>(null);
+  const [reply, setReply] = useState<HostReply | null>(null);
   const [now, setNow] = useState(Date.now());
   const [copied, setCopied] = useState(false);
   const [name, setName] = useState('');
@@ -43,7 +43,7 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
       const host = hostIdRef.current; if (!p || p.from !== host) return;
       viewFrom.current = p.from || null; setView(p); setDeadline(p.left >= 0 ? Date.now() + p.left : 0);
     },
-    act: (p: { from?: string; a?: any }) => {
+    act: (p: Wire & { a: Act }) => {
       if (!amHostRef.current || !gsRef.current || !p?.from) return;
       const t = Date.now();
       // el reloj también avanza con cada mensaje (si la pestaña del anfitrión está en segundo plano,
@@ -53,10 +53,10 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
       if (r.reply) sendRef.current(r.reply.event, { ...r.reply.payload, to: r.reply.to });
       if (r.changed || tk.changed) { gsRef.current = r.gs; broadcast(); }
     },
-    marks: (p: any) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setReply({ event: 'marks', payload: p, n: Date.now() }); },
-    'clue-error': (p: any) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setReply({ event: 'clue-error', payload: p, n: Date.now() }); },
-    secret: (p: any) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setSecret(p.w); },
-    lobby: (p: any) => { if (p?.from === hostIdRef.current) { setView(null); setSecret(null); } },
+    marks: (p: Wire & HostReply['payload']) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setReply({ event: 'marks', payload: p, n: Date.now() }); },
+    'clue-error': (p: Wire & HostReply['payload']) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setReply({ event: 'clue-error', payload: p, n: Date.now() }); },
+    secret: (p: Wire & { w: string }) => { if (p?.to === meIdRef.current && p.from === hostIdRef.current) setSecret(p.w); },
+    lobby: (p: Wire) => { if (p?.from === hostIdRef.current) { setView(null); setSecret(null); } },
     joined: () => { if (amHostRef.current && gsRef.current) broadcast(); },
   });
   const { players, meRef, track, send, error, host, isHost } = room;
@@ -116,8 +116,8 @@ export default function SocialRoom({ code, initialGame, initialPublic, initialSp
   // el anfitrión publica la sala en la lista
   useEffect(() => {
     if (!isHost || !meRef.current) return;
-    const tok = roomToken(code, (host?.cfg as any)?.tok);
-    if ((meRef.current.cfg as any)?.tok !== tok) track({ cfg: { ...(meRef.current.cfg || {}), tok } }, true);
+    const tok = roomToken(code, (host?.cfg as { tok?: string } | undefined)?.tok);
+    if ((meRef.current.cfg as { tok?: string } | undefined)?.tok !== tok) track({ cfg: { ...(meRef.current.cfg || {}), tok } }, true);
     const pub = () => publishRoom({ code, token: tok, game: cfg.game, difficulty: null, isPublic: cfg.pub, hostName: meRef.current?.name || 'anfitrión', players: players.length, status: view && view.phase !== 'over' ? 'playing' : 'lobby', spicy: cfg.spicy });
     pub(); const iv = setInterval(pub, 20000);
     return () => clearInterval(iv);

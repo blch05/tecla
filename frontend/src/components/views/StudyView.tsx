@@ -69,7 +69,7 @@ export default function StudyView() {
       const txt = /\.pdf$/i.test(f.name) || f.type === 'application/pdf' ? await pdfText(f) : await f.text();
       if (txt.replace(/\s/g, '').length < 80) { toast('No encontramos texto en ese archivo. Si es un PDF escaneado, probá pegando el texto.', 4000); return; }
       if (setDoc(txt, f.name.replace(/\.[^.]+$/, ''), true)) toast('Listo: ' + f.name);
-    } catch (err: any) { toast('No se pudo leer el archivo: ' + (err?.message || 'formato no compatible'), 4000); }
+    } catch (err) { toast('No se pudo leer el archivo: ' + (err instanceof Error ? err.message : 'formato no compatible'), 4000); }
   };
 
   const d = doc?.d, M = MODES.find(m => m.id === mode) || MODES[1];
