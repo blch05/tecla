@@ -5,11 +5,11 @@ const fakeSb = { from: vi.fn(() => ({ upsert })), rpc: vi.fn(), auth: { signOut:
 let sbAvailable = true;
 vi.mock('@/lib/supabase/client', () => ({ getSupabase: () => (sbAvailable ? fakeSb : null) }));
 
-import { History } from '@/lib/tecla/history';
+import { History, sessionStore } from '@/lib/tecla/history';
 
 function reset(mode: 'local' | 'cloud' = 'cloud') {
   Object.assign(History, { mode, user: mode === 'cloud' ? { id: 'u1', name: 'Ana', username: 'ana', avatarUrl: null, email: null } : null, cloud: new Map(), writing: false, fails: 0, noModeKey: false });
-  History.listeners.clear();
+  sessionStore.setState({ rev: 0 });
   upsert.mockReset(); fakeSb.from.mockClear();
   sbAvailable = true;
 }

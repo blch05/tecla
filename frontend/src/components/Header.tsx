@@ -2,12 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import type { HistoryUser } from '@/lib/tecla/history';
+import { useUser } from '@/lib/useHistory';
 import PillNav from '@/components/bits/PillNav';
 import DecryptedText from '@/components/bits/DecryptedText';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
-import { useShop } from '@/lib/shop/client';
+import { useShopState } from '@/lib/shop/client';
 
 const LINKS = [
   { href: '/test', label: 'test' },
@@ -22,20 +21,10 @@ const LINKS = [
 
 export default function Header() {
   const pathname = usePathname() || '/';
-  const [user, setUser] = useState<HistoryUser | null>(null);
-
-  useEffect(() => {
-    let unsub = () => {};
-    import('@/lib/tecla/history').then(({ History }) => {
-      const sync = () => setUser(History.user ? { ...History.user } : null);
-      sync();
-      unsub = History.subscribe(sync);
-    });
-    return () => unsub();
-  }, []);
+  const user = useUser();
 
   const active = LINKS.find(l => pathname.startsWith(l.href))?.href;
-  const shop = useShop();
+  const balance = useShopState(s => s.state?.balance ?? null);
 
   return (
     <header className="top">
@@ -65,7 +54,7 @@ export default function Header() {
       />
       <div className="bars" aria-hidden="true" />
       <ThemeSwitcher />
-      {shop.state && <Link className="wallet" href="/tienda" title="tus teclas* · ir a la tienda">✱ <b>{shop.state.balance.toLocaleString('es')}</b></Link>}
+      {balance != null && <Link className="wallet" href="/tienda" title="tus teclas* · ir a la tienda">✱ <b>{balance.toLocaleString('es')}</b></Link>}
       <Link className="auth" href={user ? '/perfil' : '/login'}>
         {user ? (
           user.avatarUrl

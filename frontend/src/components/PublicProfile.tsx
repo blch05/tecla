@@ -10,6 +10,7 @@ import Badge from '@/components/shop/Badge';
 import CountUp from '@/components/bits/CountUp';
 import SpotlightCard from '@/components/bits/SpotlightCard';
 import { DIFF_NAMES, GAME_NAMES, fmt, levelFor, modeLabel } from '@/lib/format';
+import { useSession } from '@/lib/useHistory';
 
 export interface PublicProfileData {
   username: string;
@@ -39,7 +40,7 @@ export default function PublicProfile({ p }: { p: PublicProfileData }) {
   const name = p.display_name || p.username;
   const L = levelFor(p.points);
   const [copied, setCopied] = useState(false);
-  const [isMe, setIsMe] = useState(false);
+  const isMe = useSession(s => !!s.user && s.user.username === p.username);
 
   // marco y título que eligió esta persona en la tienda (si la tienda está activada)
   const [cos, setCos] = useState<{ marco?: string; titulo?: string; avatar?: string; insignia?: string }>({});
@@ -50,15 +51,6 @@ export default function PublicProfile({ p }: { p: PublicProfileData }) {
       const c = (data || {}) as typeof cos; setCos(c);
       if (c.titulo) sb.from('shop_items').select('name').eq('id', c.titulo).maybeSingle().then(({ data: t }) => setCosTitle((t as { name?: string } | null)?.name || null));
     });
-  }, [p.username]);
-  useEffect(() => {
-    let unsub = () => {};
-    import('@/lib/tecla/history').then(({ History }) => {
-      const check = () => setIsMe(History.user?.username === p.username);
-      check();
-      unsub = History.subscribe(check);
-    });
-    return () => unsub();
   }, [p.username]);
 
   const share = async () => {

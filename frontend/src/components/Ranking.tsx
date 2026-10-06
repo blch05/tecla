@@ -6,6 +6,7 @@ import CountUp from '@/components/bits/CountUp';
 import PageHeader from '@/components/ui/PageHeader';
 import { getSupabase } from '@/lib/supabase/client';
 import { fmt } from '@/lib/format';
+import { useSession } from '@/lib/useHistory';
 
 interface Row { rank: number; username: string; display_name: string | null; avatar_url: string | null; value: number; accuracy: number | null; runs: number }
 
@@ -27,16 +28,7 @@ export default function Ranking() {
   const [period, setPeriod] = useState('week');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState('');
-  const [me, setMe] = useState<string | null>(null);
-
-  useEffect(() => {
-    let unsub = () => {};
-    import('@/lib/tecla/history').then(({ History }) => {
-      const sync = () => setMe(History.user?.username ?? null);
-      sync(); unsub = History.subscribe(sync);
-    });
-    return () => unsub();
-  }, []);
+  const me = useSession(s => s.user?.username ?? null);
 
   useEffect(() => {
     const sb = getSupabase();

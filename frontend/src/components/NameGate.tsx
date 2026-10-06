@@ -5,6 +5,8 @@
    Se marca en los metadatos de la cuenta (name_chosen) para no volver a preguntar. */
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
+import { History } from '@/lib/tecla/history';
+import { useSession } from '@/lib/useHistory';
 
 export default function NameGate() {
   const [open, setOpen] = useState(false);
@@ -12,23 +14,20 @@ export default function NameGate() {
   const [handle, setHandle] = useState<string | null>(null);
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
+  const user = useSession(s => (s.mode === 'cloud' ? s.user : null));
 
+  // con cuenta y sin nombre elegido todavía: preguntar
   useEffect(() => {
-    const sb = getSupabase(); if (!sb) return;
-    let off = () => {}, alive = true;
-    import('@/lib/tecla/history').then(({ History }) => {
-      const check = async () => {
-        if (!History.user || History.mode !== 'cloud') { setOpen(false); return; }
-        const { data } = await sb.auth.getUser();
-        if (!alive || !data.user) return;
-        if (data.user.user_metadata?.name_chosen) { setOpen(false); return; }
-        setName(n => n || History.user?.name || ''); setHandle(History.user?.username || null); setOpen(true);
-      };
-      off = History.subscribe(() => { check(); });
-      check();
+    const sb = getSupabase();
+    if (!sb || !user) { setOpen(false); return; }
+    let alive = true;
+    sb.auth.getUser().then(({ data }) => {
+      if (!alive || !data.user) return;
+      if (data.user.user_metadata?.name_chosen) { setOpen(false); return; }
+      setName(n => n || user.name || ''); setHandle(user.username || null); setOpen(true);
     });
-    return () => { alive = false; off(); };
-  }, []);
+    return () => { alive = false; };
+  }, [user]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +35,6 @@ export default function NameGate() {
     if (!n) { setErr('Escribí un nombre.'); return; }
     if (n.length > 40) { setErr('Máximo 40 caracteres.'); return; }
     setSaving(true); setErr('');
-    const { History } = await import('@/lib/tecla/history');
     const e1 = await History.updateProfile({ display_name: n });
     if (e1) { setErr(e1); setSaving(false); return; }
     const sb = getSupabase();

@@ -3,7 +3,8 @@
    - Siempre se guarda primero en localStorage (nunca se pierde una partida).
    - Si hay sesión de Supabase, se sube a la tabla `runs` y se lee de ahí.
    ========================================================= */
-import type { Session } from '@supabase/supabase-js';
+import type { Session, User } from '@supabase/supabase-js';
+import { createStore } from 'zustand/vanilla';
 import { getSupabase } from '@/lib/supabase/client';
 import { store } from '@/lib/tecla/utils';
 
@@ -39,7 +40,13 @@ function toRow(r: Run) {
     finished: r.fin ?? true, won: r.win ?? null, created_at: new Date(r.d).toISOString(),
   };
 }
-function fromRow(x: any): Run {
+/** fila de la tabla runs (lo que devuelve Supabase) */
+interface RunRow {
+  id: string; kind: RunKind; mode: string | null; mode_key: string | null; game: string | null; difficulty: string | null;
+  score: number | null; wpm: number | null; accuracy: number | null; points: number | null; detail: string | null;
+  finished: boolean | null; won: boolean | null; created_at: string;
+}
+function fromRow(x: RunRow): Run {
   return {
     id: x.id, d: new Date(x.created_at).getTime(), t: x.kind, pts: x.points ?? 0, mode: x.mode ?? undefined, key: x.mode_key ?? undefined, game: x.game ?? undefined,
     diff: x.difficulty ?? undefined, score: x.score ?? undefined, wpm: x.wpm ?? undefined, acc: x.accuracy ?? undefined,
@@ -47,13 +54,29 @@ function fromRow(x: any): Run {
   };
 }
 
-type Listener = () => void;
+/* ---------- estado reactivo (Zustand) ----------
+   La sesión y una versión que sube con cada cambio del historial. Los componentes lo leen con
+   los hooks de lib/hooks/useSession; el resto del código (juegos en canvas, tienda) usa History.
+   Es un store "vanilla": también funciona fuera de React. */
+export interface SessionState {
+  mode: 'local' | 'cloud';
+  user: HistoryUser | null;
+  /** sube con cada cambio del historial: sirve para volver a dibujar lo que depende de él */
+  rev: number;
+}
+export const sessionStore = createStore<SessionState>(() => ({ mode: 'local', user: null, rev: 0 }));
+
+function userFrom(u: User): HistoryUser {
+  const meta = (u.user_metadata || {}) as Record<string, string | undefined>;
+  return { id: u.id, username: null, name: meta.full_name || meta.name || (u.email ? u.email.split('@')[0] : 'vos'), avatarUrl: meta.avatar_url || meta.picture || null, email: u.email ?? null };
+}
 
 export const History = {
-  mode: 'local' as 'local' | 'cloud',
-  user: null as HistoryUser | null,
+  get mode() { return sessionStore.getState().mode; },
+  set mode(mode: SessionState['mode']) { sessionStore.setState({ mode }); },
+  get user() { return sessionStore.getState().user; },
+  set user(user: HistoryUser | null) { sessionStore.setState({ user }); },
   cloud: new Map<string, Run>(),
-  listeners: new Set<Listener>(),
   started: false,
   writing: false,
   fails: 0,
@@ -78,8 +101,9 @@ export const History = {
     return r;
   },
 
-  subscribe(fn: Listener) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; },
-  changed() { this.listeners.forEach(fn => fn()); },
+  /** Para código fuera de React: avisa ante cualquier cambio de sesión o historial. */
+  subscribe(fn: () => void) { return sessionStore.subscribe(() => fn()); },
+  changed() { sessionStore.setState(s => ({ rev: s.rev + 1 })); },
 
   async init() {
     if (this.started) return; this.started = true;
@@ -91,11 +115,9 @@ export const History = {
 
   async setSession(session: Session | null) {
     const sb = getSupabase(); if (!sb) return;
-    if (!session) { this.mode = 'local'; this.user = null; this.cloud = new Map(); this.changed(); return; }
+    if (!session) { this.cloud = new Map(); sessionStore.setState({ mode: 'local', user: null }); this.changed(); return; }
     if (this.user && this.user.id === session.user.id && this.mode === 'cloud') return;
-    const u = session.user, meta: any = u.user_metadata || {};
-    this.user = { id: u.id, username: null, name: meta.full_name || meta.name || (u.email ? u.email.split('@')[0] : 'vos'), avatarUrl: meta.avatar_url || meta.picture || null, email: u.email ?? null };
-    this.mode = 'cloud'; this.changed();
+    sessionStore.setState({ user: userFrom(session.user), mode: 'cloud' }); this.changed();
     await this.loadProfile();
     await this.pull();
     await this.push();
@@ -106,10 +128,9 @@ export const History = {
     const sb = getSupabase(); if (!sb || !this.user) return;
     // select(*) para no romper si la migración social todavía no está aplicada
     const { data: prof } = await sb.from('profiles').select('*').eq('id', this.user.id).maybeSingle();
-    if (!prof) return;
-    if (prof.display_name) this.user.name = prof.display_name;
-    if (prof.avatar_url) this.user.avatarUrl = prof.avatar_url;
-    this.user.username = prof.username ?? null;
+    if (!prof || !this.user) return;
+    // objeto nuevo (no mutar): así los componentes suscriptos se enteran del cambio
+    this.user = { ...this.user, name: prof.display_name || this.user.name, avatarUrl: prof.avatar_url || this.user.avatarUrl, username: prof.username ?? null };
     this.changed();
   },
 
@@ -128,7 +149,7 @@ export const History = {
     const sb = getSupabase(); if (!sb || this.mode !== 'cloud') return;
     const { data, error } = await sb.from('runs').select('*').order('created_at', { ascending: false }).limit(2000);
     if (error) return;
-    this.cloud = new Map((data || []).map(x => [x.id, fromRow(x)]));
+    this.cloud = new Map(((data || []) as RunRow[]).map(x => [x.id, fromRow(x)]));
   },
 
   async push() {

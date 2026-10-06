@@ -1,22 +1,26 @@
 'use client';
 
-/* El historial (History) como hook de React: lo carga en el navegador (usa localStorage,
-   así que nunca corre en el servidor) y vuelve a dibujar cuando cambia. */
+/* La sesión y el historial como hooks de React, sobre el store de Zustand (sessionStore).
+   El historial vive en localStorage: hasta montar en el navegador se devuelve null,
+   así el HTML del servidor coincide con el primer render del cliente. */
 import { useEffect, useState } from 'react';
-import type { History as HistoryT } from '@/lib/tecla/history';
+import { useStore } from 'zustand';
+import { History, sessionStore, type SessionState } from '@/lib/tecla/history';
+import { setConsumer } from '@/lib/tecla/input';
 
+/** Lee una parte de la sesión (usuario, modo) y vuelve a dibujar solo cuando esa parte cambia. */
+export function useSession<T>(selector: (s: SessionState) => T): T {
+  return useStore(sessionStore, selector);
+}
+export const useUser = () => useSession(s => s.user);
+
+/** El historial completo; vuelve a dibujar con cada partida guardada o sincronizada. */
 export function useHistory() {
-  const [H, setH] = useState<typeof HistoryT | null>(null);
-  const [, bump] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  useSession(s => s.rev);
   useEffect(() => {
-    let off = () => {}, alive = true;
-    import('@/lib/tecla/history').then(({ History }) => {
-      if (!alive) return;
-      setH(History);
-      off = History.subscribe(() => bump(x => x + 1));
-    });
-    import('@/lib/tecla/input').then(m => m.setConsumer(null)); // estas vistas no capturan el teclado
-    return () => { alive = false; off(); };
+    setMounted(true);
+    setConsumer(null); // estas vistas no capturan el teclado
   }, []);
-  return H;
+  return mounted ? History : null;
 }

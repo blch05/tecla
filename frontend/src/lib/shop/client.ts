@@ -3,27 +3,37 @@
 /* Tienda del lado del navegador: saldo, catálogo, inventario y lo equipado.
    Todo lo que cambia saldo o inventario pasa por funciones de la base (buy_item, equip_item);
    acá solo se lee, se pide y se aplica lo equipado a la página. */
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { useStore } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import { getSupabase } from '@/lib/supabase/client';
 import { EFFECT, type ShopItem, type Slot } from '@/lib/shop/catalog';
 
 export interface ShopState { balance: number; earnedToday: number; cap: number; owned: string[]; equipped: Partial<Record<Slot, string>> }
-type Listener = () => void;
 const COS_KEY = 'tecla:cos'; // lo equipado, para aplicarlo antes de pintar (ver THEME_BOOT)
 /** Lo equipado que se aplica en este navegador (el valor de EFFECT de cada lugar). */
 export type Cos = Partial<Record<'caret' | 'runner' | 'festejo' | 'fuente' | 'fondo' | 'efecto', string>>;
 const COS_SLOTS: [keyof Cos, Slot][] = [['caret', 'cursor'], ['runner', 'runner'], ['festejo', 'festejo'], ['fuente', 'fuente'], ['fondo', 'fondo'], ['efecto', 'efecto']];
 
+/** estado reactivo de la tienda (Zustand); las acciones viven en Shop */
+export interface ShopStore {
+  state: ShopState | null;
+  items: ShopItem[] | null;
+  signedIn: boolean;
+  /** la migración de la tienda todavía no está aplicada */
+  missing: boolean;
+}
+export const shopStore = createStore<ShopStore>(() => ({ state: null, items: null, signedIn: false, missing: false }));
+const set = (patch: Partial<ShopStore>) => shopStore.setState(patch);
+
 export const Shop = {
-  state: null as ShopState | null,
-  items: null as ShopItem[] | null,
-  signedIn: false,
-  missing: false, // la migración de la tienda todavía no está aplicada
-  listeners: new Set<Listener>(),
+  get state() { return shopStore.getState().state; },
+  get items() { return shopStore.getState().items; },
+  get signedIn() { return shopStore.getState().signedIn; },
+  get missing() { return shopStore.getState().missing; },
   started: false,
 
-  subscribe(fn: Listener) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; },
-  changed() { this.listeners.forEach(fn => fn()); },
+  subscribe(fn: () => void) { return shopStore.subscribe(() => fn()); },
 
   init() {
     if (this.started || typeof window === 'undefined') return; this.started = true;
@@ -34,8 +44,8 @@ export const Shop = {
       const sync = () => {
         const on = !!History.user && History.mode === 'cloud';
         if (on === this.signedIn) return;
-        this.signedIn = on;
-        if (on) this.load(); else { this.state = null; this.apply(); this.changed(); }
+        set({ signedIn: on });
+        if (on) this.load(); else { set({ state: null }); this.apply(); }
       };
       History.subscribe(sync); sync();
     });
@@ -56,17 +66,17 @@ export const Shop = {
   async loadItems() {
     const sb = getSupabase(); if (!sb) return;
     const { data, error } = await sb.from('shop_items').select('id, slot, name, price, rarity, sort').eq('active', true).order('sort');
-    if (error) { this.missing = true; this.changed(); return; }
-    this.items = (data as ShopItem[]) || []; this.changed();
+    if (error) { set({ missing: true }); return; }
+    set({ items: (data as ShopItem[]) || [] });
   },
 
   async load() {
     const sb = getSupabase(); if (!sb) return;
     const { data, error } = await sb.rpc('shop_state');
-    if (error) { this.missing = /shop_state|function/.test(error.message); this.changed(); return; }
+    if (error) { set({ missing: /shop_state|function/.test(error.message) }); return; }
     const d = (data || {}) as { balance?: number; earned_today?: number; cap?: number; owned?: string[]; equipped?: Record<string, string> };
-    this.state = { balance: d.balance ?? 0, earnedToday: d.earned_today ?? 0, cap: d.cap ?? 250, owned: d.owned ?? [], equipped: (d.equipped ?? {}) as ShopState['equipped'] };
-    this.apply(); this.changed();
+    set({ state: { balance: d.balance ?? 0, earnedToday: d.earned_today ?? 0, cap: d.cap ?? 250, owned: d.owned ?? [], equipped: (d.equipped ?? {}) as ShopState['equipped'] } });
+    this.apply();
   },
 
   owns(id: string) { return !!this.state?.owned.includes(id); },
@@ -110,9 +120,15 @@ export function cosmetics(): Cos {
 /** Aspecto del corredor equipado (lo lee el canvas del runner). */
 export function runnerSkin(): string { return cosmetics().runner || ''; }
 
-/** La tienda como hook de React. */
+/** La tienda como hook de React: arranca la tienda y vuelve a dibujar cuando cambia su estado. */
 export function useShop() {
-  const [, bump] = useState(0);
-  useEffect(() => { Shop.init(); return Shop.subscribe(() => bump(x => x + 1)); }, []);
+  useStore(shopStore);
+  useEffect(() => { Shop.init(); }, []);
   return Shop;
+}
+
+/** Una parte del estado de la tienda (vuelve a dibujar solo cuando esa parte cambia). */
+export function useShopState<T>(selector: (s: ShopStore) => T): T {
+  useEffect(() => { Shop.init(); }, []);
+  return useStore(shopStore, selector);
 }
