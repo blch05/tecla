@@ -13,6 +13,9 @@ import { botBase, DIFFS, type BotDiff } from '@/lib/compete/bots';
 import { store } from '@/lib/tecla/utils';
 import { setConsumer } from '@/lib/tecla/input';
 import { History } from '@/lib/tecla/history';
+import { useQuery } from '@tanstack/react-query';
+import { dailyTopQuery } from '@/lib/queries';
+import { useSession } from '@/lib/useHistory';
 import { newRoomCode } from '@/lib/rooms';
 
 const LIVE: CompeteMode = { id: 'live', name: 'en vivo', bots: false, desc: 'Jugá con personas reales: carreras, arcade multijugador y juegos de palabras (palabra oculta, sopa de letras, pistas y tutti frutti). Enter abre una carrera rápida.' };
@@ -124,23 +127,21 @@ function EndPanel({ r, again }: { r: EndResult; again: () => void }) {
 
 /** Ranking del desafío diario (solo con cuenta). */
 function DailyBoard({ day, wpm, acc }: { day: string; wpm: number; acc: number }) {
-  const [rows, setRows] = useState<{ user_id: string; display_name: string | null; wpm: number }[] | null>(null);
-  const [cloud, setCloud] = useState<boolean | null>(null);
-  const [me, setMe] = useState<string | null>(null);
+  const cloud = useSession(s => s.mode === 'cloud');
+  const me = useSession(s => s.user?.id ?? null);
+  // primero se guarda mi resultado y recién después se pide el ranking (para aparecer en él)
+  const [submitted, setSubmitted] = useState(false);
   useEffect(() => {
+    if (!cloud) return;
     let alive = true;
-    (async () => {
-      const c = History.mode === 'cloud'; if (!alive) return; setCloud(c); setMe(History.user?.id || null);
-      if (!c) return;
-      await History.submitDaily(day, wpm, acc);
-      const r = await History.dailyTop(day); if (alive) setRows(r);
-    })();
+    History.submitDaily(day, wpm, acc).then(() => { if (alive) setSubmitted(true); });
     return () => { alive = false; };
-  }, [day, wpm, acc]);
+  }, [cloud, day, wpm, acc]);
+  const rows = useQuery({ ...dailyTopQuery(day), enabled: cloud && submitted }).data ?? null;
   return (
     <div className="board">
       <span className="lbl">ranking de hoy</span>
-      {cloud === false && <p className="hint">entrá con tu cuenta para aparecer en el ranking del día</p>}
+      {!cloud && <p className="hint">entrá con tu cuenta para aparecer en el ranking del día</p>}
       {cloud && !rows && <p className="hint">cargando…</p>}
       {rows && (rows.length
         ? <ol>{rows.map(x => <li key={x.user_id} className={x.user_id === me ? 'me' : ''}><span>{x.display_name || 'alguien'}</span><b>{Math.round(x.wpm)} ppm</b></li>)}</ol>

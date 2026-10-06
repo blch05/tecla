@@ -196,11 +196,6 @@ export const History = {
     const sb = getSupabase(); if (!sb || this.mode !== 'cloud') return;
     await sb.rpc('submit_daily', { p_day: day, p_wpm: Math.round(wpm * 10) / 10, p_accuracy: Math.round(acc * 10) / 10 });
   },
-  async dailyTop(day: string): Promise<DailyRow[]> {
-    const sb = getSupabase(); if (!sb) return [];
-    const { data, error } = await sb.from('daily_leaderboard').select('*').eq('day', day).order('rank').limit(10);
-    return error ? [] : (data as DailyRow[]);
-  },
 
   async signOut() { const sb = getSupabase(); if (sb) await sb.auth.signOut(); },
 };

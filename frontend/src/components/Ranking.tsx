@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import CountUp from '@/components/bits/CountUp';
 import PageHeader from '@/components/ui/PageHeader';
-import { getSupabase } from '@/lib/supabase/client';
 import { fmt } from '@/lib/format';
 import { useSession } from '@/lib/useHistory';
+import { leaderboardQuery } from '@/lib/queries';
 
-interface Row { rank: number; username: string; display_name: string | null; avatar_url: string | null; value: number; accuracy: number | null; runs: number }
 
 const BOARDS = [
   { key: 't15', label: '15 s', unit: 'ppm' },
@@ -26,22 +26,11 @@ const PERIODS = [
 export default function Ranking() {
   const [board, setBoard] = useState('t30');
   const [period, setPeriod] = useState('week');
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [error, setError] = useState('');
   const me = useSession(s => s.user?.username ?? null);
 
-  useEffect(() => {
-    const sb = getSupabase();
-    if (!sb) { setError('Falta conectar Supabase.'); setRows([]); return; }
-    let alive = true;
-    setRows(null); setError('');
-    sb.rpc('leaderboard', { p_board: board, p_period: period, p_limit: 50 }).then(({ data, error }) => {
-      if (!alive) return;
-      if (error) { setError(/leaderboard/.test(error.message) ? 'El ranking todavía no está activado en la base de datos.' : error.message); setRows([]); return; }
-      setRows((data as Row[]) || []);
-    });
-    return () => { alive = false; };
-  }, [board, period]);
+  const q = useQuery(leaderboardQuery(board, period));
+  const error = q.error?.message ?? '';
+  const rows = q.data ?? (q.isError ? [] : null);
 
   const unit = BOARDS.find(b => b.key === board)!.unit;
   const podium = (rows || []).slice(0, 3);

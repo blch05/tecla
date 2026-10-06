@@ -17,7 +17,7 @@ const config = [
   {
     // componentes adaptados de React Bits: se mantienen cerca del original para poder actualizarlos
     files: ['src/components/bits/**'],
-    rules: { 'react-hooks/exhaustive-deps': 'off' },
+    rules: { 'react-hooks/exhaustive-deps': 'off', '@typescript-eslint/no-explicit-any': 'off' },
   },
   {
     files: ['tests/**'],

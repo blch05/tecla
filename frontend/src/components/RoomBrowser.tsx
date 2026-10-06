@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { cleanCode, findRoom, isSocial, listRooms, newRoomCode, roomPath, type RoomGame, type RoomInfo } from '@/lib/rooms';
+import { useQuery } from '@tanstack/react-query';
+import { roomsQuery } from '@/lib/queries';
+import { cleanCode, findRoom, isSocial, newRoomCode, roomPath, type RoomGame, type RoomInfo } from '@/lib/rooms';
 import { GAME_GROUPS, GAME_INFO, gameTabs } from '@/lib/games';
 import Tabs from '@/components/ui/Tabs';
 
@@ -11,8 +13,9 @@ const pathOf = (game: RoomGame, code: string) => (game === 'carrera' ? `/carrera
 
 /** Lista de salas públicas + crear sala (pública o privada) + entrar con código. */
 export default function RoomBrowser({ go }: { go: (path: string) => void }) {
-  const [rooms, setRooms] = useState<RoomInfo[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const roomsQ = useQuery(roomsQuery);
+  const error = roomsQ.error?.message ?? null;
+  const rooms: RoomInfo[] | null = roomsQ.data ?? (roomsQ.isError ? [] : null);
   const [game, setGame] = useState<RoomGame>('carrera');
   const [isPublic, setIsPublic] = useState(true);
   const [group, setGroup] = useState('tipeo');
@@ -24,13 +27,6 @@ export default function RoomBrowser({ go }: { go: (path: string) => void }) {
   const joinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setNewCode(newRoomCode()); }, []);
-  useEffect(() => {
-    let alive = true;
-    const load = () => listRooms().then(r => { if (!alive) return; setRooms(r.rooms); setError(r.error); });
-    load();
-    const iv = setInterval(load, 5000);
-    return () => { alive = false; clearInterval(iv); };
-  }, []);
 
   const create = () => go(roomPath(game, newCode || newRoomCode(), isPublic) + (isSocial(game) && spicy ? '&picante=1' : ''));
   const pickGroup = (id: string) => { setGroup(id); setGame(GAME_GROUPS.find(g => g.id === id)!.games[0]); };

@@ -7,9 +7,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import PageHeader from '@/components/ui/PageHeader';
 import Tabs from '@/components/ui/Tabs';
 import { useShop } from '@/lib/shop/client';
+import { useQuery } from '@tanstack/react-query';
+import { coinLogQuery } from '@/lib/queries';
+import { useUser } from '@/lib/useHistory';
 import { EFFECT, RARITY_NAMES, SLOTS, type ShopItem, type Slot } from '@/lib/shop/catalog';
 import { applyTheme, PREMIUM, readTheme } from '@/lib/theme';
-import { getSupabase } from '@/lib/supabase/client';
 import Avatar from '@/components/shop/Avatar';
 import Badge from '@/components/shop/Badge';
 import { celebrate } from '@/lib/shop/celebrate';
@@ -79,20 +81,15 @@ export default function ShopView() {
   const [slot, setSlot] = useState<'todo' | Slot>('todo');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
-  const [log, setLog] = useState<{ amount: number; reason: string; created_at: string }[] | null>(null);
-  const [name, setName] = useState('vos');
-  const [seed, setSeed] = useState('vos');
+  const user = useUser();
+  const name = user?.name || 'vos', seed = user?.username || user?.id || 'vos';
   const [sound, setSound] = useState('off');
   useEffect(() => setSound(testSound()), []);
   const st = shop.state;
   const items = useMemo(() => shop.items || [], [shop.items]);
 
-  // movimientos recientes y nombre (para la vista previa del marco)
-  useEffect(() => {
-    import('@/lib/tecla/history').then(({ History }) => { const u = History.user; setName(u?.name || 'vos'); setSeed(u?.username || u?.id || 'vos'); });
-    const sb = getSupabase(); if (!sb || !shop.signedIn) return;
-    sb.from('coin_log').select('amount, reason, created_at').order('created_at', { ascending: false }).limit(12).then(({ data }) => setLog(data || []));
-  }, [shop.signedIn, st?.balance]);
+  // movimientos recientes de teclas*
+  const log = useQuery(coinLogQuery(shop.signedIn ? user?.id ?? null : null, st?.balance)).data ?? null;
 
   const shown = useMemo(() => items.filter(i => slot === 'todo' || i.slot === slot), [items, slot]);
   const theme = typeof window !== 'undefined' ? readTheme() : null;

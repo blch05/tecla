@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import AppShell from '@/components/AppShell';
 import Header from '@/components/Header';
 import NameGate from '@/components/NameGate';
+import Providers from '@/components/Providers';
 import ShopBackground from '@/components/shop/ShopBackground';
 import { THEME_BOOT } from '@/lib/theme';
 import './globals.css';
@@ -25,16 +26,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Martian+Mono:wght@400;600;800&display=swap" />
       </head>
       <body>
-        <div className="pat tr" aria-hidden="true" />
-        <div className="pat bl" aria-hidden="true" />
-        <ShopBackground />
-        <div className="app">
-          <Header />
-          <div className="deco" data-n="220" aria-hidden="true" />
-          <main>{children}</main>
-        </div>
-        <AppShell />
-        <NameGate />
+        <Providers>
+          <div className="pat tr" aria-hidden="true" />
+          <div className="pat bl" aria-hidden="true" />
+          <ShopBackground />
+          <div className="app">
+            <Header />
+            <div className="deco" data-n="220" aria-hidden="true" />
+            <main>{children}</main>
+          </div>
+          <AppShell />
+          <NameGate />
+          </Providers>
       </body>
     </html>
   );
