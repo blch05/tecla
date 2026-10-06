@@ -6,7 +6,11 @@ import SpotlightCard from '@/components/bits/SpotlightCard';
 import { cssColor } from '@/lib/theme';
 import DotGrid from '@/components/bits/DotGrid';
 import StarBorder from '@/components/bits/StarBorder';
-import TextType from '@/components/bits/TextType';
+import dynamic from 'next/dynamic';
+import HeroTyper from '@/components/landing/HeroTyper';
+
+// three.js se descarga solo en la portada y después de pintar el resto
+const Keyboard3D = dynamic(() => import('@/components/three/Keyboard3D'), { ssr: false, loading: () => <div className="hero-kb" /> });
 
 const FEATURES = [
   { href: '/test', glyph: '|', title: 'test con fantasma', text: 'Corré contra tu mejor marca y mirá qué teclas te frenan.' },
@@ -42,18 +46,8 @@ export default function Landing() {
 
       <div className="hero">
         <span className="eyebrow">* — práctica de tipeo</span>
-        <h1 className="hero-title">
-          <TextType
-            as="span"
-            text={['escribí más rápido.', 'estudiá tipeando.', 'ganale a tu fantasma.', 'jugá con palabras.']}
-            typingSpeed={55}
-            deletingSpeed={28}
-            pauseDuration={1900}
-            variableSpeed={{ min: 35, max: 95 }}
-            cursorCharacter="|"
-            cursorClassName="hero-cursor"
-          />
-        </h1>
+        <HeroTyper />
+        <Keyboard3D className="hero-kb" />
         <p className="hero-sub">
           Un teclado, un texto y nada más. Medí tu velocidad, entrená tus puntos débiles, competí y repasá tus apuntes mientras tipeás.
         </p>

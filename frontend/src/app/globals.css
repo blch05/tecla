@@ -9,7 +9,7 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html,body{height:100%}
+html,body{height:100%;overflow-x:clip}
 body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
@@ -396,6 +396,23 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 .feature span:last-child{font-size:12.5px;color:var(--sub);line-height:1.4}
 @media (max-width:900px){ .features{grid-template-columns:repeat(2,1fr)} }
 @media (prefers-reduced-motion:reduce){ .landing-bg{display:none} }
+/* portada: el título se tipea y el teclado 3D responde */
+.hero-typer{white-space:pre-wrap;cursor:text}
+.ht-l{position:relative;transition:color .12s}
+.ht-l.todo{color:var(--dim)}
+.ht-l.ok{color:var(--ink)}
+.ht-l.bad{color:var(--err);text-decoration:line-through;text-decoration-thickness:3px}
+.ht-caret{position:absolute;left:-2px;top:.08em;bottom:.04em;width:3px;border-radius:2px;background:var(--accent);animation:ht-blink 1s steps(1) infinite}
+.ht-caret.end{position:relative;display:inline-block;height:.9em;vertical-align:-.08em;margin-left:2px}
+@keyframes ht-blink{50%{opacity:0}}
+.hero-typer-hint{margin:0;font-size:13px;color:var(--sub);min-height:1.4em;opacity:0;transform:translateY(4px);transition:opacity .4s,transform .4s}
+.hero-typer-hint.on{opacity:1;transform:none}
+.hero-typer-hint b{color:var(--accent);font-size:15px}
+.hero-typer-hint a{color:var(--accent)}
+.hero-kb{width:min(760px,100%);height:clamp(150px,26vh,260px);margin:-4px auto 0}
+.hero-kb canvas{display:block}
+@media (prefers-reduced-motion:reduce){ .ht-caret{animation:none} }
+.kb3d-tip{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--sub);pointer-events:none;white-space:nowrap}
 
 /* ---------- temas: color de acento ---------- */
 :root[data-accent="menta"]{--accent:#1DB386;--accent-2:#8BE3C6;--soft:#EFFBF6;--dim:#CDEFE1;--line:#E0F3EA;--pat:#DCF3E9}
