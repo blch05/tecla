@@ -818,5 +818,6 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 .badge-anim svg{display:block}
 @media (prefers-reduced-motion:reduce){ .shop-bg{display:none} }
 
-/* fondo de flujo del test (shader) */
-.flow-bg{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;pointer-events:none}
+/* paisaje del test: ocupa la parte de abajo y se funde hacia arriba */
+.flow-bg{position:fixed;left:0;right:0;bottom:0;width:100%;height:48vh;z-index:-1;pointer-events:none;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 38%);mask-image:linear-gradient(to bottom,transparent,#000 38%)}

@@ -14,6 +14,9 @@ import { focusKb } from '@/lib/tecla/input';
 /** Un punto de la línea de tiempo: [ms desde el inicio, palabra, letras escritas]. Sirve para reproducir el fantasma. */
 export type TimelinePoint = [ms: number, word: number, chars: number];
 
+/** Una pulsación: ms desde el inicio, si fue correcta y si fue un espacio (fin de palabra). */
+export interface Stroke { t: number; ok: boolean; space: boolean }
+
 /** estadísticas por letra de esta partida (mismas claves que el mapa de calor) */
 export interface LetterStat { n: number; e: number; t: number; c: number }
 
@@ -79,6 +82,8 @@ export class TypeBox {
   /** línea de tiempo de esta partida (se guarda con el récord para ser el próximo fantasma) */
   tl: TimelinePoint[] = [];
   kstat: Record<string, LetterStat> = {};
+  /** cada pulsación con su tiempo (para la huella de tipeo) */
+  strokes: Stroke[] = [];
 
   private keys: boolean[] = [];
   private samples: Sample[] = [];
@@ -108,7 +113,7 @@ export class TypeBox {
   load(words: string[], { ghost = null, extend = null, time = 0 }: LoadOpts = {}) {
     this.stop();
     this.words = words.slice(); this.typed = ['']; this.wi = 0; this.t0 = 0; this.done = false;
-    this.keys = []; this.tl = []; this.samples = []; this.kstat = {};
+    this.keys = []; this.tl = []; this.samples = []; this.kstat = {}; this.strokes = [];
     this.ghost = ghost; this.extend = extend; this.time = time;
     this.lastT = 0; this.prev = null; this.gi = 0; this.lastSec = 0; this.errSec = 0;
     this.wordsEl.replaceChildren(); this.wordEls = []; this.addWords(0);
@@ -174,7 +179,7 @@ export class TypeBox {
     if (ti.length >= w.length + MAX_EXTRA) return;
     const exp = w[ti.length] as string | undefined, ok = c === exp, dt = this.lastT ? t - this.lastT : 0;
     this.lastT = t;
-    this.keys.push(ok);
+    this.keys.push(ok); this.strokes.push({ t: Math.round(t - this.t0), ok, space: false });
     if (!ok) this.errSec++;
     if (exp !== undefined) {
       recordKey(exp, c, dt, this.prev);
@@ -196,6 +201,7 @@ export class TypeBox {
     const ti = this.typed[this.wi]; if (!ti) return;
     const w = this.words[this.wi], correct = ti === w;
     this.keys.push(correct); if (!correct) this.errSec++;
+    this.strokes.push({ t: Math.round(now() - this.t0), ok: correct, space: true });
     this.lastT = now(); this.prev = null;
     this.wi++; this.typed[this.wi] = '';
     this.paint(this.wi - 1);

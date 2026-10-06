@@ -1,93 +1,136 @@
 'use client';
 
-/* Fondo "estado de flujo" del test: un shader WebGL con el color de acento que respira
-   según tu velocidad. Calmo si vas tranquilo; más vivo, con líneas de velocidad, cuando
-   pasás tu promedio; un destello cálido cuando le errás.
-   - "tecla:flow" (detail: 0–1) fija la intensidad; "tecla:flow-err" dispara el destello.
-   - WebGL puro, sin librerías. Con "reducir movimiento" no se dibuja. */
+/* Paisaje del test: un recorrido lo-fi en capas (parallax) que avanza más rápido cuanto
+   más rápido tipeás. Montañas lejanas, colinas, árboles y flores con forma de *, sol de día
+   y luna con estrellas en modo oscuro; todo con los colores del tema.
+   - "tecla:flow" (detail: 0–1) fija la velocidad; "tecla:flow-err" hace un pequeño tropiezo.
+   - Canvas 2D, sin librerías. Con "reducir movimiento" queda quieto. */
 import { useEffect, useRef } from 'react';
 import { cssColor } from '@/lib/theme';
 
-const VERT = `attribute vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }`;
-const FRAG = `
-precision mediump float;
-uniform vec2 res; uniform float t, flow, err;
-uniform vec3 bg, acc, acc2, hot;
-float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f);
-  return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y); }
-float fbm(vec2 p){ float v = 0., a = .5; for (int i = 0; i < 5; i++){ v += a*n(p); p *= 2.02; a *= .5; } return v; }
-void main(){
-  vec2 uv = gl_FragCoord.xy / res; vec2 q = uv * vec2(res.x/res.y, 1.) * 1.6;
-  float sp = .04 + flow * .35;
-  float f = fbm(q + vec2(t*sp, t*sp*.4) + fbm(q*1.3 - t*.05));
-  // manchas de color que se intensifican con el flujo
-  float blob = smoothstep(.32, .78, f) * (.18 + flow * .66);
-  vec3 col = mix(bg, mix(acc2, acc, smoothstep(.4, .9, f) * (.4 + flow * .6)), blob);
-  // líneas de velocidad horizontales cuando vas rápido
-  float lane = floor(uv.y * 38.);
-  float streak = smoothstep(.93, 1., fract(uv.x * .5 - t * (.6 + h(vec2(lane)) * 1.6) + h(vec2(lane, 3.))));
-  col = mix(col, acc, streak * smoothstep(.45, 1., flow) * .5 * step(.5, h(vec2(lane, 7.))));
-  // el centro (donde está el texto) queda más calmo; los bordes se encienden
-  float center = smoothstep(.62, .1, length((uv - vec2(.5, .55)) * vec2(1.1, 1.5)));
-  col = mix(col, bg, center * .65);
-  col = mix(col, hot, err * .22 * (1. - center * .6));
-  gl_FragColor = vec4(col, 1.);
-}`;
+type RGB = [number, number, number];
+const rgb = (hex: string): RGB => {
+  const m = hex.trim().match(/^#?([0-9a-f]{6})$/i);
+  const n = m ? parseInt(m[1], 16) : 0xffffff;
+  return [n >> 16 & 255, n >> 8 & 255, n & 255];
+};
+const mix = (a: RGB, b: RGB, k: number) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * k)).join(',')})`;
 
-function hex(c: string): [number, number, number] {
-  const m = c.trim().match(/^#?([0-9a-f]{6})$/i);
-  if (!m) return [1, 1, 1];
-  const n = parseInt(m[1], 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
-}
+/** Altura de una capa en la posición x: suma de ondas con fases fijas (infinita y sin cortes). */
+const ridge = (x: number, seed: number, amp: number) =>
+  amp * (0.55 * Math.sin(x * 0.0021 + seed) + 0.3 * Math.sin(x * 0.0057 + seed * 2.3) + 0.15 * Math.sin(x * 0.013 + seed * 4.1));
+/** pseudoaleatorio estable por posición (para ubicar árboles, flores y estrellas) */
+const hash = (n: number) => { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); };
+
+interface Palette { bg: RGB; acc: RGB; acc2: RGB; ink: RGB; dark: boolean }
+const readPalette = (): Palette => ({
+  bg: rgb(cssColor('--bg', '#ffffff')), acc: rgb(cssColor('--accent', '#34A3F0')), acc2: rgb(cssColor('--accent-2', '#92D2FF')),
+  ink: rgb(cssColor('--ink', '#1D2B38')), dark: document.documentElement.dataset.theme === 'dark',
+});
+
+// capas de atrás hacia adelante: velocidad relativa, base (fracción del alto), amplitud y tono
+const LAYERS = [
+  { speed: 0.08, base: 0.42, amp: 0.13, tone: 0.18, seed: 1.7 },
+  { speed: 0.2, base: 0.58, amp: 0.1, tone: 0.32, seed: 4.2 },
+  { speed: 0.45, base: 0.72, amp: 0.07, tone: 0.5, seed: 7.9 },
+  { speed: 1, base: 0.86, amp: 0.04, tone: 0.72, seed: 2.6 },
+];
 
 export default function FlowBackground() {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const cv = ref.current; if (!cv) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const gl = cv.getContext('webgl', { antialias: false, premultipliedAlpha: false });
-    if (!gl) return;
-    const sh = (type: number, src: string) => { const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s); return s; };
-    const prog = gl.createProgram()!;
-    gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog); gl.useProgram(prog);
-    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const u = (n: string) => gl.getUniformLocation(prog, n);
-    const U = { res: u('res'), t: u('t'), flow: u('flow'), err: u('err'), bg: u('bg'), acc: u('acc'), acc2: u('acc2'), hot: u('hot') };
-
-    const colors = () => {
-      gl.uniform3fv(U.bg, hex(cssColor('--bg', '#ffffff'))); gl.uniform3fv(U.acc, hex(cssColor('--accent', '#34A3F0')));
-      gl.uniform3fv(U.acc2, hex(cssColor('--accent-2', '#92D2FF'))); gl.uniform3fv(U.hot, hex(cssColor('--err', '#F0607A')));
-    };
-    colors();
-    const mo = new MutationObserver(colors);
+    const ctx = cv.getContext('2d'); if (!ctx) return;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let pal = readPalette(), W = 0, H = 0;
+    const mo = new MutationObserver(() => { pal = readPalette(); if (still) draw(); });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-accent', 'style'] });
+    const resize = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      W = cv.clientWidth; H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (still) draw();
+    };
 
-    // media resolución: es un fondo difuso, no hace falta más (y cuida la batería)
-    const resize = () => { const s = 0.5; cv.width = Math.max(1, cv.clientWidth * s); cv.height = Math.max(1, cv.clientHeight * s); gl.viewport(0, 0, cv.width, cv.height); gl.uniform2f(U.res, cv.width, cv.height); };
-    resize(); const ro = new ResizeObserver(resize); ro.observe(cv);
-
-    let target = 0, flow = 0, err = 0, raf = 0, last = performance.now(), t = 0;
+    let target = 0, flow = 0, x = 0, stumble = 0, raf = 0, last = performance.now(), t = 0;
     const onFlow = (e: Event) => { target = Math.max(0, Math.min(1, Number((e as CustomEvent).detail) || 0)); };
-    const onErr = () => { err = 1; };
+    const onErr = () => { stumble = 1; };
     window.addEventListener('tecla:flow', onFlow); window.addEventListener('tecla:flow-err', onErr);
+
+    function draw() {
+      if (!ctx || !W) return;
+      const { bg, acc, acc2, ink, dark } = pal;
+      const k = dark ? 0.75 : 1;
+      ctx.clearRect(0, 0, W, H);
+      // cielo: se funde con el fondo de la página arriba
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, mix(bg, acc2, 0)); sky.addColorStop(1, mix(bg, acc2, dark ? 0.12 : 0.28));
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+      // estrellas (modo oscuro), titilan y se corren apenas
+      if (dark) for (let i = 0; i < 60; i++) {
+        const sx = ((hash(i) * W * 1.5 - x * 0.02) % W + W) % W, sy = hash(i + 99) * H * 0.5;
+        ctx.globalAlpha = 0.3 + 0.5 * Math.abs(Math.sin(t * 0.6 + i)); ctx.fillStyle = mix(bg, ink, 0.8);
+        ctx.fillRect(sx, sy, 1.5, 1.5);
+      }
+      ctx.globalAlpha = 1;
+      // sol (o luna), quieto sobre el horizonte
+      const sunX = W * 0.74, sunY = H * 0.36, sunR = Math.min(W, H) * 0.09;
+      const halo = ctx.createRadialGradient(sunX, sunY, sunR * 0.4, sunX, sunY, sunR * 3);
+      halo.addColorStop(0, mix(bg, acc2, dark ? 0.35 : 0.55)); halo.addColorStop(1, mix(bg, acc2, 0));
+      ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = dark ? mix(bg, ink, 0.85) : mix(bg, acc2, 0.9);
+      ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2); ctx.fill();
+      // capas de terreno, cada una a su velocidad
+      LAYERS.forEach((L, li) => {
+        const off = x * L.speed, base = H * L.base, amp = H * L.amp;
+        ctx.fillStyle = mix(bg, li < 2 ? acc2 : acc, L.tone * k);
+        ctx.beginPath(); ctx.moveTo(0, H);
+        for (let px = 0; px <= W + 8; px += 8) ctx.lineTo(px, base - ridge(px + off, L.seed, amp));
+        ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+        if (li < 2) return;
+        // árboles en la colina del medio, flores * en la de adelante
+        const step = li === 2 ? 46 : 34, first = Math.floor(off / step) - 1;
+        for (let j = first; j < first + W / step + 3; j++) {
+          const r = hash(j * (li + 3)); if (r < (li === 2 ? 0.55 : 0.4)) continue;
+          const wx = j * step - off + r * step * 0.6, gy = base - ridge(wx + off, L.seed, amp);
+          if (li === 2) {
+            const th = 14 + r * 16;
+            ctx.fillStyle = mix(bg, acc, 0.66 * k);
+            ctx.beginPath(); ctx.moveTo(wx, gy - th); ctx.lineTo(wx - th * 0.32, gy + 2); ctx.lineTo(wx + th * 0.32, gy + 2); ctx.closePath(); ctx.fill();
+          } else {
+            ctx.fillStyle = r > 0.85 ? mix(bg, acc2, 0.25) : mix(bg, ink, dark ? 0.55 : 0.12);
+            ctx.font = `700 ${12 + r * 8}px "Martian Mono", monospace`; ctx.textAlign = 'center';
+            ctx.fillText('*', wx, gy - 2);
+          }
+        }
+      });
+      // líneas de viento cuando vas rápido
+      if (flow > 0.35) {
+        ctx.strokeStyle = mix(bg, acc2, 0.9); ctx.lineWidth = 1.5; ctx.globalAlpha = (flow - 0.35) * 0.9;
+        for (let i = 0; i < 9; i++) {
+          const ly = H * (0.15 + hash(i + 7) * 0.5), len = 40 + hash(i + 3) * 80;
+          const lx = W - ((x * (1.4 + hash(i) * 0.8) + hash(i + 11) * W * 2) % (W + len * 2)) + len;
+          ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + len, ly); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    resize(); const ro = new ResizeObserver(resize); ro.observe(cv);
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      flow += (target - flow) * Math.min(1, dt * 1.6); err = Math.max(0, err - dt * 3);
-      t += dt * (1 + flow * 2);
-      gl.uniform1f(U.t, t); gl.uniform1f(U.flow, flow); gl.uniform1f(U.err, err);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      flow += (target - flow) * Math.min(1, dt * 1.2);
+      stumble = Math.max(0, stumble - dt * 2.5);
+      // velocidad de la capa de adelante en px/s: casi quieto en reposo, rápido en flujo
+      const speed = 14 + flow * flow * 520;
+      x += speed * dt * (1 - stumble * 0.8); t += dt;
+      draw();
       raf = requestAnimationFrame(frame);
     };
-    raf = requestAnimationFrame(frame);
+    if (!still) raf = requestAnimationFrame(frame);
     return () => {
       cancelAnimationFrame(raf); ro.disconnect(); mo.disconnect();
       window.removeEventListener('tecla:flow', onFlow); window.removeEventListener('tecla:flow-err', onErr);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, []);
 
