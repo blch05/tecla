@@ -817,3 +817,6 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 .badge-anim{display:inline-block;flex:none;vertical-align:middle}
 .badge-anim svg{display:block}
 @media (prefers-reduced-motion:reduce){ .shop-bg{display:none} }
+
+/* fondo de flujo del test (shader) */
+.flow-bg{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;pointer-events:none}

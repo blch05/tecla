@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import CountUp from '@/components/bits/CountUp';
 import ShinyText from '@/components/bits/ShinyText';
 import DomNode from '@/components/ui/DomNode';
+import FlowBackground from '@/components/FlowBackground';
 import PageHeader from '@/components/ui/PageHeader';
 import { useShop } from '@/lib/shop/client';
 import { EFFECT } from '@/lib/shop/catalog';
@@ -47,7 +48,7 @@ function Opt({ on, title, onClick, children }: { on: boolean; title?: string; on
 export default function TestView() {
   const boxRef = useRef<HTMLDivElement>(null);
   // estado del motor fuera de React: las teclas llegan más rápido que los renders
-  const eng = useRef<{ box: TypeBox | null; pb: PersonalBest | null; seed: number; ghost: boolean }>({ box: null, pb: null, seed: 0, ghost: false });
+  const eng = useRef<{ box: TypeBox | null; pb: PersonalBest | null; seed: number; ghost: boolean; ref: number }>({ box: null, pb: null, seed: 0, ghost: false, ref: 40 });
   const cfgRef = useRef<TestCfg>(DEFAULT_CFG);
   const [cfg, setCfgState] = useState<TestCfg | null>(null);
   const [live, setLive] = useState({ count: '', wpm: '', ghost: '' });
@@ -70,6 +71,8 @@ export default function TestView() {
         const diff = b.charsDone() - gc; ghost = `vs récord ${diff >= 0 ? '+' : '−'}${Math.abs(diff)} letras`;
       } else ghost = `fantasma: ${Math.round(e.pb.wpm)} ppm`;
     }
+    // fondo de flujo: 0 sin tipear, 1 cuando vas a la velocidad de tu récord (o de tu promedio) o más
+    window.dispatchEvent(new CustomEvent('tecla:flow', { detail: started && !b.done ? Math.min(1, b.wpmNow() / e.ref) ** 1.5 : 0 }));
     setLive({
       count: c.mode === 'time' ? String(Math.max(0, Math.ceil(c.time - b.elapsed()))) : `${b.wi}/${c.words}`,
       wpm: started ? Math.round(b.wpmNow()) + ' ppm' : (c.weak ? 'entrenando tus puntos débiles' : ''),
@@ -80,6 +83,8 @@ export default function TestView() {
   const restart = useCallback((seed?: number, vsGhost = false) => {
     const c = cfgRef.current, e = eng.current, box = e.box; if (!box) return;
     const pb = personalBest.get(testKey(c)); e.pb = pb;
+    const recent = testHistory.regular().slice(-10);
+    e.ref = pb?.wpm || (recent.length ? recent.reduce((a, x) => a + x.wpm, 0) / recent.length : 40);
     let ghost: TimelinePoint[] | null = null; e.ghost = false;
     if (seed == null) seed = rand();
     if (vsGhost && c.ghost && pb && !c.weak) { seed = pb.seed; ghost = pb.tl; e.ghost = true; }
@@ -116,7 +121,13 @@ export default function TestView() {
     const box = new TypeBox(boxRef.current, { onTick: updateLive, onInput: updateLive, onFinish: finish });
     eng.current.box = box;
     consumer.current = {
-      char: ch => { if (box.done) return; playSound(ch); box.char(ch); },
+      char: ch => {
+        if (box.done) return;
+        playSound(ch);
+        const w = box.words[box.wi] || '', t = box.typed[box.wi] || '';
+        if (ch !== ' ' && w[t.length] !== ch) window.dispatchEvent(new Event('tecla:flow-err'));
+        box.char(ch);
+      },
       back: x => box.back(x),
       tab: () => restart(),
       enter: () => { if (box.done) restart(); },
@@ -193,6 +204,7 @@ export default function TestView() {
 
       </PageHeader>
 
+      <FlowBackground />
       <div className="page-body center">
       <div className="typing-wrap" hidden={!!res}>
         <div className="live"><span>{live.count}</span><span className="sm">{live.wpm}</span><span className="gh">{live.ghost}</span></div>
