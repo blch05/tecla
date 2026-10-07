@@ -821,3 +821,11 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 /* paisaje del test: ocupa la parte de abajo y se funde hacia arriba */
 .flow-bg{position:fixed;left:0;right:0;bottom:0;width:100%;height:48vh;z-index:-1;pointer-events:none;
   -webkit-mask-image:linear-gradient(to bottom,transparent,#000 38%);mask-image:linear-gradient(to bottom,transparent,#000 38%)}
+.flow-bg.pixelated{image-rendering:pixelated}
+.flow-bg.pixelated{image-rendering:pixelated}
+
+/* tienda: escenas y administrador */
+.shop-prev.scene-prev{height:112px;display:block;padding:0;position:relative}
+.scene-canvas{display:block;width:100%;height:100%}
+.scene-canvas.pixelated{image-rendering:pixelated}
+.admin-chip{font-size:12px;letter-spacing:.06em;color:var(--accent);border:1px dashed var(--accent);border-radius:999px;padding:3px 10px}

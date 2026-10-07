@@ -9,11 +9,11 @@ import { createStore } from 'zustand/vanilla';
 import { getSupabase } from '@/lib/supabase/client';
 import { EFFECT, type ShopItem, type Slot } from '@/lib/shop/catalog';
 
-export interface ShopState { balance: number; earnedToday: number; cap: number; owned: string[]; equipped: Partial<Record<Slot, string>> }
+export interface ShopState { balance: number; earnedToday: number; cap: number; owned: string[]; equipped: Partial<Record<Slot, string>>; /** administrador: tiene todo sin pagar */ admin: boolean }
 const COS_KEY = 'tecla:cos'; // lo equipado, para aplicarlo antes de pintar (ver THEME_BOOT)
 /** Lo equipado que se aplica en este navegador (el valor de EFFECT de cada lugar). */
-export type Cos = Partial<Record<'caret' | 'runner' | 'festejo' | 'fuente' | 'fondo' | 'efecto', string>>;
-const COS_SLOTS: [keyof Cos, Slot][] = [['caret', 'cursor'], ['runner', 'runner'], ['festejo', 'festejo'], ['fuente', 'fuente'], ['fondo', 'fondo'], ['efecto', 'efecto']];
+export type Cos = Partial<Record<'caret' | 'runner' | 'festejo' | 'fuente' | 'fondo' | 'efecto' | 'escena', string>>;
+const COS_SLOTS: [keyof Cos, Slot][] = [['caret', 'cursor'], ['runner', 'runner'], ['festejo', 'festejo'], ['fuente', 'fuente'], ['fondo', 'fondo'], ['efecto', 'efecto'], ['escena', 'escena']];
 
 /** estado reactivo de la tienda (Zustand); las acciones viven en Shop */
 export interface ShopStore {
@@ -74,8 +74,8 @@ export const Shop = {
     const sb = getSupabase(); if (!sb) return;
     const { data, error } = await sb.rpc('shop_state');
     if (error) { set({ missing: /shop_state|function/.test(error.message) }); return; }
-    const d = (data || {}) as { balance?: number; earned_today?: number; cap?: number; owned?: string[]; equipped?: Record<string, string> };
-    set({ state: { balance: d.balance ?? 0, earnedToday: d.earned_today ?? 0, cap: d.cap ?? 250, owned: d.owned ?? [], equipped: (d.equipped ?? {}) as ShopState['equipped'] } });
+    const d = (data || {}) as { balance?: number; earned_today?: number; cap?: number; owned?: string[]; equipped?: Record<string, string>; admin?: boolean };
+    set({ state: { balance: d.balance ?? 0, earnedToday: d.earned_today ?? 0, cap: d.cap ?? 250, owned: d.owned ?? [], equipped: (d.equipped ?? {}) as ShopState['equipped'], admin: !!d.admin } });
     this.apply();
   },
 

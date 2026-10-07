@@ -7,8 +7,9 @@ supabase/
 ├── migrations/20260923180000_social.sql  usuarios, perfiles públicos y rankings
 ├── migrations/20260923220000_rooms.sql   salas online: públicas y privadas
 ├── migrations/20260924100000_hardening.sql refuerzos de seguridad
+├── migrations/2026092…–20261007…        juegos sociales, tienda, escenas y administradores
 ├── seed.sql
-└── tests/                               tests de la base con pgTAP (database, rooms)
+└── tests/                               tests de la base con pgTAP (database, rooms, shop_admin)
 ```
 
 ## Qué hay en la base
@@ -28,6 +29,8 @@ supabase/
 | `upsert_room` / `close_room` | el anfitrión registra y cierra su sala (con un token secreto) | cualquiera con el token |
 | `list_rooms()` | salas públicas con actividad reciente | todos |
 | `find_room(código)` | a qué juego pertenece un código (sirve para salas privadas) | todos |
+| `shop_items`, `wallets`, `inventory`, `equipped` | tienda: catálogo, teclas*, lo comprado y lo equipado (incluye las escenas del test) | se lee lo propio · se escribe solo con `buy_item` / `equip_item` |
+| `admins` / `is_admin()` | administradores: tienen todo lo de la tienda sin pagar | nadie desde la app · se agregan desde el SQL Editor |
 
 Todas las tablas tienen Row Level Security activado.
 

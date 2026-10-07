@@ -1,7 +1,7 @@
 /* Tienda: cómo se ve cada objeto. El precio y si existe los decide la base (shop_items);
    acá solo está lo visual, indexado por id. Todo es estético: nada da ventaja. */
 
-export type Slot = 'cursor' | 'acento' | 'marco' | 'titulo' | 'runner' | 'festejo' | 'sonido' | 'fuente' | 'fondo' | 'avatar' | 'insignia' | 'efecto';
+export type Slot = 'cursor' | 'acento' | 'marco' | 'titulo' | 'runner' | 'festejo' | 'sonido' | 'fuente' | 'fondo' | 'avatar' | 'insignia' | 'efecto' | 'escena';
 export type Rarity = 'comun' | 'rara' | 'epica';
 export interface ShopItem { id: string; slot: Slot; name: string; price: number; rarity: Rarity; sort: number }
 
@@ -11,6 +11,7 @@ export const SLOTS: { id: Slot; name: string; where: string }[] = [
   { id: 'fuente', name: 'tipografías', where: 'la letra de la caja de tipeo' },
   { id: 'sonido', name: 'sonidos', where: 'el sonido del teclado en el test (se elige con ♪)' },
   { id: 'festejo', name: 'festejos', where: 'lo que salta al terminar un test, batir un récord o ganar' },
+  { id: 'escena', name: 'escenas', where: 'lo que pasa detrás del test mientras tipeás (reacciona a tu velocidad, tus aciertos y tus errores)' },
   { id: 'fondo', name: 'fondos', where: 'un fondo animado detrás de toda la página' },
   { id: 'efecto', name: 'efectos', where: 'las explosiones al destruir palabras en el arcade' },
   { id: 'marco', name: 'marcos', where: 'el borde de tu avatar en el perfil (lo ven los demás)' },
@@ -34,6 +35,8 @@ export const EFFECT: Record<string, string> = {
   'fondo-nieve': 'nieve', 'fondo-estrellas': 'estrellas', 'fondo-burbujas': 'burbujas', 'fondo-luciernagas': 'luciernagas',
   'avatar-pixel': 'pixel', 'avatar-formas': 'formas', 'avatar-pulgar': 'pulgar', 'avatar-lorelei': 'lorelei', 'avatar-robot': 'robot',
   'insignia-estrella': 'estrella', 'insignia-rayo': 'rayo', 'insignia-corazon': 'corazon', 'insignia-corona': 'corona',
+  'escena-jardin': 'jardin', 'escena-acuario': 'acuario', 'escena-gato': 'gato', 'escena-robot': 'robot', 'escena-tren': 'tren',
+  'escena-fantasma': 'fantasma', 'escena-mago': 'mago', 'escena-nave': 'nave', 'escena-espadachin': 'espadachin', 'escena-espadachin-sombra': 'sombra',
   'efecto-chispas': 'chispas', 'efecto-neon': 'neon', 'efecto-pixeles': 'pixeles', 'efecto-supernova': 'supernova',
 };
 

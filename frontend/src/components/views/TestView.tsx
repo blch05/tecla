@@ -6,9 +6,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import CountUp from '@/components/bits/CountUp';
 import ShinyText from '@/components/bits/ShinyText';
 import DomNode from '@/components/ui/DomNode';
-import FlowBackground from '@/components/FlowBackground';
+import SceneCanvas, { emitScene } from '@/components/SceneCanvas';
 import PageHeader from '@/components/ui/PageHeader';
-import { useShop } from '@/lib/shop/client';
+import { cosmetics, useShop, type Cos } from '@/lib/shop/client';
 import { EFFECT } from '@/lib/shop/catalog';
 import { isPack, PACKS, play as playPack, preload as preloadPack } from '@/lib/shop/sounds';
 import { celebrate } from '@/lib/shop/celebrate';
@@ -55,6 +55,13 @@ export default function TestView() {
   const [res, setRes] = useState<Result | null>(null);
   const consumer = useRef<Consumer | null>(null);
   const shop = useShop();
+  // la escena equipada en la tienda (o el paisaje, que es gratis)
+  const [scene, setScene] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setScene(cosmetics().escena);
+    const on = (e: Event) => setScene((e as CustomEvent<Cos>).detail?.escena);
+    window.addEventListener('tecla:cos', on); return () => window.removeEventListener('tecla:cos', on);
+  }, []);
 
   const vlabel = (c: TestCfg) => (c.vocab && c.vocab !== 'medio' ? ' · ' + VOCAB_NAMES[c.vocab] : '');
 
@@ -69,6 +76,7 @@ export default function TestView() {
         for (let i = 0; i < g.length && g[i][0] <= ms; i++) at = g[i];
         let gc = 0; if (at) { for (let i = 0; i < at[1]; i++) gc += b.words[i].length + 1; gc += at[2]; }
         const diff = b.charsDone() - gc; ghost = `vs récord ${diff >= 0 ? '+' : '−'}${Math.abs(diff)} letras`;
+        emitScene({ type: 'ghost', diff });
       } else ghost = `fantasma: ${Math.round(e.pb.wpm)} ppm`;
     }
     // fondo de flujo: 0 sin tipear, 1 cuando vas a la velocidad de tu récord (o de tu promedio) o más
@@ -92,7 +100,8 @@ export default function TestView() {
     e.seed = seed;
     const gen = c.weak ? weakWordGen(seed) : wordGen(seed, VOCAB[c.vocab] || VOCAB.medio), timed = c.mode === 'time';
     box.load(gen(timed ? 80 : c.words), { ghost, extend: timed ? gen : null, time: timed ? c.time : 0 });
-    setRes(null); updateLive();
+    setRes(null); updateLive(); emitScene({ type: 'start' });
+    if (!e.ghost) emitScene({ type: 'ghost', diff: null });
     requestAnimationFrame(() => e.box?.refresh());
     const cur = getConsumer(); if (cur === consumer.current || !cur) setConsumer(consumer.current);
   }, [updateLive]);
@@ -109,6 +118,7 @@ export default function TestView() {
       .sort((a, b) => (b.err * 600 + b.ms) - (a.err * 600 + a.ms)).slice(0, 6);
     const chart = lineChart([{ v: s.per.map(p => p.wpm), cls: 'ln' }, { v: s.per.map(p => p.raw), cls: 'ln2' }], { marks: s.per.map(p => p.err), xl: (i: number) => (i + 1) + 's', H: 150 });
     celebrate(newPb ? 'record' : 'fin');
+    emitScene({ type: 'finish', wpm: s.wpm, acc: s.acc, record: newPb });
     if (isPack(c.sound)) playPack(c.sound, 'end');
     setRes({ wpm: s.wpm, acc: s.acc, raw: s.raw, cons: s.cons, secs: s.secs, correct: s.correct, all: s.all, chart, slow, label: label + (c.weak ? ' · débiles' : ''), newPb, pb });
   }, []);
@@ -118,14 +128,14 @@ export default function TestView() {
     if (!boxRef.current) return;
     const c: TestCfg = { ...DEFAULT_CFG, ...store.get<Partial<TestCfg>>('cfg', {}) };
     cfgRef.current = c; setCfgState(c); preloadPack(c.sound);
-    const box = new TypeBox(boxRef.current, { onTick: updateLive, onInput: updateLive, onFinish: finish });
+    const box = new TypeBox(boxRef.current, { onTick: updateLive, onInput: updateLive, onFinish: finish, onWord: ok => emitScene({ type: 'word', ok }) });
     eng.current.box = box;
     consumer.current = {
       char: ch => {
         if (box.done) return;
         playSound(ch);
         const w = box.words[box.wi] || '', t = box.typed[box.wi] || '';
-        if (ch !== ' ' && w[t.length] !== ch) window.dispatchEvent(new Event('tecla:flow-err'));
+        emitScene({ type: 'key', ok: ch === ' ' ? t.length > 0 && t === w : w[t.length] === ch });
         box.char(ch);
       },
       back: x => box.back(x),
@@ -204,7 +214,7 @@ export default function TestView() {
 
       </PageHeader>
 
-      <FlowBackground />
+      <SceneCanvas scene={scene} />
       <div className="page-body center">
       <div className="typing-wrap" hidden={!!res}>
         <div className="live"><span>{live.count}</span><span className="sm">{live.wpm}</span><span className="gh">{live.ghost}</span></div>

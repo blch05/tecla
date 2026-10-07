@@ -14,6 +14,7 @@ import { EFFECT, RARITY_NAMES, SLOTS, type ShopItem, type Slot } from '@/lib/sho
 import { applyTheme, PREMIUM, readTheme } from '@/lib/theme';
 import Avatar from '@/components/shop/Avatar';
 import Badge from '@/components/shop/Badge';
+import SceneCanvas from '@/components/SceneCanvas';
 import { celebrate } from '@/lib/shop/celebrate';
 import { play as playPack } from '@/lib/shop/sounds';
 import { FONTS } from '@/lib/shop/fonts';
@@ -55,6 +56,8 @@ function FxPreview({ fx }: { fx: string }) {
 function Preview({ item, name, seed }: { item: ShopItem; name: string; seed: string }) {
   const fx = EFFECT[item.id];
   if (item.slot === 'fuente') return <FontPreview fx={fx} />;
+  // la escena funcionando, con un tipeo simulado
+  if (item.slot === 'escena') return <div className="shop-prev scene-prev"><SceneCanvas scene={fx} demo className="scene-canvas" /></div>;
   if (item.slot === 'efecto') return <FxPreview fx={fx} />;
   if (item.slot === 'avatar') return <div className="shop-prev"><Avatar name={name} seed={seed} style={fx} /></div>;
   if (item.slot === 'insignia') return <div className="shop-prev"><Badge fx={fx} size={46} /></div>;
@@ -113,6 +116,7 @@ export default function ShopView() {
 
   const header = (
     <PageHeader eyebrow="* — solo estética, se paga con teclas*" title="tienda">
+      {st?.admin && <span className="admin-chip" title="cuenta de administrador: todo lo de la tienda, sin pagar">admin · todo gratis</span>}
       {st && <span className="wallet" title="tus teclas*">✱ <b>{st.balance.toLocaleString('es')}</b> teclas*</span>}
       <Tabs items={[{ id: 'todo', label: 'todo' }, ...SLOTS.map(s => ({ id: s.id, label: s.name }))]} value={slot} onChange={id => setSlot(id as 'todo' | Slot)} label="categorías" />
     </PageHeader>

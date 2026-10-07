@@ -6,7 +6,7 @@ import { palette } from '@/lib/shop/palette';
 
 // el catálogo vive en la migración (la base decide precios); la página tiene que saber dibujar cada objeto
 const mig = (f: string) => readFileSync(resolve(process.cwd(), '../backend/supabase/migrations/' + f), 'utf8');
-const sql = mig('20260926120000_shop.sql') + mig('20260927120000_shop_more.sql');
+const sql = mig('20260926120000_shop.sql') + mig('20260927120000_shop_more.sql') + mig('20261007120000_scenes_admin.sql');
 const items = [...sql.matchAll(/\('([a-z0-9-]+)',\s*'(\w+)',\s*'([^']+)',\s*(\d+),\s*'(comun|rara|epica)'/g)]
   .map(m => ({ id: m[1], slot: m[2], name: m[3], price: +m[4], rarity: m[5] }));
 
@@ -36,7 +36,7 @@ describe('catálogo de la tienda', () => {
 
 describe('tienda: segunda tanda', () => {
   it('los lugares que acepta la base son los mismos que conoce la página', () => {
-    const more = mig('20260927120000_shop_more.sql');
+    const more = mig('20261007120000_scenes_admin.sql'); // la última migración que toca los lugares
     const lists = [...more.matchAll(/slot (?:not )?in\s*\(([^)]+)\)/g)].map(m => [...m[1].matchAll(/'(\w+)'/g)].map(x => x[1]).sort())
       .filter(l => l.length > 4); // la de public_cosmetics es a propósito un subconjunto: solo lo que ven los demás
     expect(lists.length).toBeGreaterThanOrEqual(3);
@@ -48,11 +48,13 @@ describe('tienda: segunda tanda', () => {
     const { BADGE_IDS } = await import('@/lib/shop/badges');
     const { FONTS } = await import('@/lib/shop/fonts');
     const { FONT_FAMILIES } = await import('@/lib/theme');
+    const { SCENES } = await import('@/lib/scenes');
     for (const it of items) {
       const fx = EFFECT[it.id];
       if (it.slot === 'sonido') { expect(PACKS[fx], it.id).toBeTruthy(); expect(existsSync(resolve(process.cwd(), `public/sounds/${fx}.wav`))).toBe(true); }
       if (it.slot === 'insignia') expect(BADGE_IDS).toContain(fx);
       if (it.slot === 'fuente') { expect(FONTS[fx], it.id).toBeTruthy(); expect(FONT_FAMILIES[fx]).toBeTruthy(); }
+      if (it.slot === 'escena') expect(SCENES[fx], it.id).toBeTruthy();
     }
   });
 });
