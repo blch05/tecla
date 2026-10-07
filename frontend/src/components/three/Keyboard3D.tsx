@@ -1,6 +1,8 @@
 'use client';
 
-/* Teclado en 3D (three.js + React Three Fiber). Dos usos:
+/* Teclado en 3D (three.js + React Three Fiber), estilo cartoon: sombreado plano de dos tonos
+   (toon), contorno marcado en cada tecla y una sombra plana debajo. Distribución en español.
+   Dos usos:
    - portada: las teclas se hunden con lo que tipeás (evento "tecla:press") y festejan en ola;
    - progreso: mapa de calor, cada tecla sube según `heat` (0–1) y se puede girar arrastrando.
    Los colores salen del tema (variables CSS) y se actualizan si cambia el acento o el modo.
@@ -11,12 +13,21 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { cssColor } from '@/lib/theme';
 
-export const KB_ROWS = ['qwertyuiop', 'asdfghjklñ', 'zxcvbnm'];
-const ROW_SHIFT = [0, 0.28, 0.82];
-const U = 1, GAP = 0.14, CAP_H = 0.42, PRESS = 0.2;
+const U = 1, GAP = 0.14, CAP_H = 0.42, PRESS = 0.2, OUTLINE = 0.055;
+
+/* fila por fila: [leyenda, ancho en unidades, letra que la activa] (sin letra = modificador) */
+type K = [label: string, w?: number, ch?: string];
+const ROWS: K[][] = [
+  [['º'], ['1'], ['2'], ['3'], ['4'], ['5'], ['6'], ['7'], ['8'], ['9'], ['0'], ["'"], ['¡'], ['⌫', 2]],
+  [['⇥', 1.5], ...[...'qwertyuiop'].map((c): K => [c]), ['`'], ['+'], ['ç', 1.5]],
+  [['⇪', 1.75], ...[...'asdfghjklñ'].map((c): K => [c]), ['´'], ['↵', 2.25]],
+  [['⇧', 2.25], ...[...'zxcvbnm'].map((c): K => [c]), [','], ['.'], ['-'], ['⇧', 2.75]],
+  [['ctrl', 1.5], ['⌘', 1.25], ['alt', 1.25], ['', 6.5, ' '], ['alt', 1.25], ['fn', 1.25], ['ctrl', 2]],
+];
+const MODS = new Set(['⌫', '⇥', '⇪', '↵', '⇧', 'ctrl', '⌘', 'alt', 'fn']);
 
 export interface Keyboard3DProps {
-  /** 0–1 por tecla: altura y color del mapa de calor */
+  /** 0–1 por tecla (letra en minúscula): altura y color del mapa de calor */
   heat?: Record<string, number> | null;
   /** girar arrastrando con el mouse (mapa de calor) */
   draggable?: boolean;
@@ -25,11 +36,17 @@ export interface Keyboard3DProps {
   className?: string;
 }
 
-interface Theme { cap: string; side: string; soft: string; ink: string; acc: string; acc2: string; hot: string; bg: string }
-const readTheme = (): Theme => ({
-  cap: cssColor('--surface', '#ffffff'), side: cssColor('--dim', '#D6E8F7'), soft: cssColor('--soft', '#F0F8FF'), ink: cssColor('--ink', '#1D2B38'),
-  acc: cssColor('--accent', '#34A3F0'), acc2: cssColor('--accent-2', '#92D2FF'), hot: cssColor('--err', '#F0607A'), bg: cssColor('--bg', '#ffffff'),
-});
+interface Theme { white: string; ink: string; acc: string; acc2: string; hot: string; shade: string }
+const readTheme = (): Theme => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  return {
+    white: dark ? cssColor('--surface', '#131C26') : '#ffffff',
+    ink: cssColor('--ink', '#1D2B38'),
+    acc: cssColor('--accent', '#34A3F0'), acc2: cssColor('--accent-2', '#92D2FF'), hot: cssColor('--err', '#F0607A'),
+    // las caras en sombra toman un tinte del acento (no gris): queda más limpio y "dibujado"
+    shade: cssColor('--accent-2', '#92D2FF'),
+  };
+};
 
 function useTheme() {
   const [t, setT] = useState<Theme | null>(null);
@@ -37,7 +54,7 @@ function useTheme() {
     const read = () => setT(readTheme());
     read();
     window.addEventListener('tecla:theme', read);
-    // el modo claro/oscuro cambia un atributo del <html>
+    // el modo claro/oscuro y el acento cambian atributos del <html>
     const mo = new MutationObserver(read);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-accent', 'style'] });
     return () => { window.removeEventListener('tecla:theme', read); mo.disconnect(); };
@@ -45,57 +62,74 @@ function useTheme() {
   return t;
 }
 
-/** Textura con la letra de una tecla. */
-function legend(ch: string, color: string) {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
+/** Textura con la leyenda de una tecla. */
+function legend(label: string, color: string, w: number) {
+  const c = document.createElement('canvas'); c.width = 128 * Math.ceil(w); c.height = 128;
   const x = c.getContext('2d')!;
-  x.fillStyle = color; x.font = '600 64px "IBM Plex Mono", ui-monospace, monospace';
-  x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, 64, 70);
+  const small = label.length > 1 || MODS.has(label);
+  x.fillStyle = color; x.font = `${small ? 600 : 700} ${small ? 40 : 64}px "IBM Plex Mono", ui-monospace, monospace`;
+  // los modificadores van abajo a la izquierda, como en un teclado real
+  if (small) { x.textAlign = 'left'; x.textBaseline = 'alphabetic'; x.fillText(label, 24, 104); }
+  else { x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(label, c.width / 2, 70); }
   const t = new THREE.CanvasTexture(c); t.anisotropy = 4; t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
-interface KeyDef { k: string; x: number; z: number; w: number }
+/** Rampa de dos tonos para el sombreado toon (sin degradé). three la lee en 0.5 + 0.5·(N·L):
+    con cuatro valores, las caras que miran poco a la luz (los costados) quedan en el tono de sombra. */
+function toonRamp() {
+  const lo = 70, hi = 255;
+  const t = new THREE.DataTexture(new Uint8Array([lo, lo, lo, 255, lo, lo, lo, 255, lo, lo, lo, 255, hi, hi, hi, 255]), 4, 1, THREE.RGBAFormat);
+  t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true;
+  return t;
+}
+
+interface KeyDef { id: string; label: string; ch: string | null; x: number; z: number; w: number }
 function layout(): KeyDef[] {
   const keys: KeyDef[] = [];
-  KB_ROWS.forEach((row, r) => [...row].forEach((k, i) => keys.push({ k, x: ROW_SHIFT[r] + i * (U + GAP), z: r * (U + GAP), w: U })));
-  keys.push({ k: ' ', x: 2.3, z: 3 * (U + GAP), w: 5.6 });
-  // centrar
-  const minX = Math.min(...keys.map(k => k.x - k.w / 2)), maxX = Math.max(...keys.map(k => k.x + k.w / 2));
-  const cx = (minX + maxX) / 2 - U / 2, cz = 1.5 * (U + GAP);
-  return keys.map(k => ({ ...k, x: k.x - cx + (k.w - U) / 2, z: k.z - cz }));
+  ROWS.forEach((row, r) => {
+    let x = 0;
+    row.forEach(([label, w = 1, ch], i) => {
+      const width = w * U + (w - 1) * GAP;
+      keys.push({ id: `${r}-${i}`, label, ch: ch ?? (MODS.has(label) ? null : label), x: x + width / 2, z: r * (U + GAP), w: width });
+      x += w * (U + GAP);
+    });
+  });
+  const maxX = Math.max(...keys.map(k => k.x + k.w / 2)), maxZ = Math.max(...keys.map(k => k.z));
+  return keys.map(k => ({ ...k, x: k.x - maxX / 2, z: k.z - maxZ / 2 }));
 }
 
 const reduced = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+/** la tecla física de un carácter: "Á" → "a" */
+const keyOf = (c: string) => (c === ' ' ? ' ' : c.toLowerCase().normalize('NFD')[0]);
 
 function Keys({ theme, heat, draggable, onHover }: { theme: Theme; heat?: Record<string, number> | null; draggable?: boolean; onHover: (k: string | null) => void }) {
   const keys = useMemo(layout, []);
   const group = useRef<THREE.Group>(null);
   const meshes = useRef<(THREE.Group | null)[]>([]);
-  const press = useRef(new Map<string, number>());   // tecla → momento en que se apretó
+  const press = useRef(new Map<string, number>());   // carácter → momento en que se apretó
   const wave = useRef(-1);                              // momento de la ola de festejo
   const drag = useRef({ on: false, x: 0, rot: 0, vel: 0 });
   const still = useMemo(reduced, []);
   const { gl } = useThree();
+  const ramp = useMemo(toonRamp, []);
 
   const geos = useMemo(() => {
     const m = new Map<number, THREE.BufferGeometry>();
-    for (const k of keys) if (!m.has(k.w)) m.set(k.w, new RoundedBoxGeometry(k.w, CAP_H, U, 4, 0.14));
+    for (const k of keys) if (!m.has(k.w)) m.set(k.w, new RoundedBoxGeometry(k.w, CAP_H, U, 3, 0.12));
     return m;
   }, [keys]);
-  const legendGeo = useMemo(() => new THREE.PlaneGeometry(0.62, 0.62), []);
-  // base redondeada justo alrededor de las teclas
-  const baseGeo = useMemo(() => {
+  const base = useMemo(() => {
     const xs = keys.flatMap(k => [k.x - k.w / 2, k.x + k.w / 2]), zs = keys.map(k => k.z);
-    const w = Math.max(...xs) - Math.min(...xs) + 0.7, d = Math.max(...zs) - Math.min(...zs) + U + 0.7;
-    return { geo: new RoundedBoxGeometry(w, 0.3, d, 4, 0.22), x: (Math.max(...xs) + Math.min(...xs)) / 2, z: (Math.max(...zs) + Math.min(...zs)) / 2 };
+    const w = Math.max(...xs) - Math.min(...xs) + 0.8, d = Math.max(...zs) - Math.min(...zs) + U + 0.8;
+    return { geo: new RoundedBoxGeometry(w, 0.34, d, 3, 0.26), w, d };
   }, [keys]);
-  const textures = useMemo(() => new Map(keys.filter(k => k.k !== ' ').map(k => [k.k, legend(k.k, theme.ink)])), [keys, theme.ink]);
+  const textures = useMemo(() => new Map(keys.filter(k => k.label).map(k => [k.id, legend(k.label, theme.ink, k.w)])), [keys, theme.ink]);
   useEffect(() => () => textures.forEach(t => t.dispose()), [textures]);
 
   // la portada avisa cada tecla con "tecla:press"; "tecla:wave" dispara la ola
   useEffect(() => {
-    const onPress = (e: Event) => { const k = String((e as CustomEvent).detail || '').toLowerCase(); press.current.set(k === ' ' ? ' ' : k.normalize('NFD')[0], performance.now()); };
+    const onPress = (e: Event) => { press.current.set(keyOf(String((e as CustomEvent).detail || '')), performance.now()); };
     const onWave = () => { wave.current = performance.now(); };
     window.addEventListener('tecla:press', onPress); window.addEventListener('tecla:wave', onWave);
     return () => { window.removeEventListener('tecla:press', onPress); window.removeEventListener('tecla:wave', onWave); };
@@ -113,7 +147,7 @@ function Keys({ theme, heat, draggable, onHover }: { theme: Theme; heat?: Record
     return () => { el.removeEventListener('pointerdown', down); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
   }, [draggable, gl]);
 
-  const colors = useMemo(() => ({ cap: new THREE.Color(theme.cap), acc: new THREE.Color(theme.acc), acc2: new THREE.Color(theme.acc2), hot: new THREE.Color(theme.hot), side: new THREE.Color(theme.side) }), [theme]);
+  const colors = useMemo(() => ({ white: new THREE.Color(theme.white), acc: new THREE.Color(theme.acc), hot: new THREE.Color(theme.hot) }), [theme]);
   const tmp = useMemo(() => new THREE.Color(), []);
 
   useFrame((state, dt) => {
@@ -123,56 +157,61 @@ function Keys({ theme, heat, draggable, onHover }: { theme: Theme; heat?: Record
     const d = drag.current;
     if (draggable) { if (!d.on) { d.rot += d.vel; d.vel *= 0.92; } g.rotation.y = d.rot; }
     else if (!still) {
-      g.rotation.y += ((state.pointer.x * 0.18) - g.rotation.y) * Math.min(1, dt * 3);
-      g.rotation.x += ((-state.pointer.y * 0.08) - g.rotation.x) * Math.min(1, dt * 3);
+      g.rotation.y += ((state.pointer.x * 0.16) - g.rotation.y) * Math.min(1, dt * 3);
+      g.rotation.x += ((-state.pointer.y * 0.07) - g.rotation.x) * Math.min(1, dt * 3);
       g.position.y = Math.sin(t * 0.8) * 0.06;
     }
     keys.forEach((k, i) => {
       const m = meshes.current[i]; if (!m) return;
-      const h = heat ? heat[k.k] ?? 0 : 0;
-      const scaleY = heat ? 0.35 + h * 3.2 : 1;
+      const h = heat && k.ch ? heat[k.ch] ?? 0 : 0;
+      const scaleY = heat ? (k.ch && /\p{L}/u.test(k.ch) ? 0.35 + h * 3.2 : 0.35) : 1;
       // tecla apretada: baja y vuelve en ~260 ms
-      const p = press.current.get(k.k), pt = p ? (now - p) / 260 : 1;
+      const p = k.ch ? press.current.get(k.ch) : undefined, pt = p ? (now - p) / 260 : 1;
       let dy = pt < 1 ? -PRESS * Math.sin(Math.PI * Math.min(1, pt)) : 0;
       // ola: recorre el teclado de izquierda a derecha
-      if (wave.current > 0 && !still) { const w = (now - wave.current) / 1000 - (k.x + 6) * 0.05; if (w > 0 && w < 0.5) dy += Math.sin(w / 0.5 * Math.PI) * 0.45; }
+      if (wave.current > 0 && !still) { const w = (now - wave.current) / 1000 - (k.x + 9) * 0.04; if (w > 0 && w < 0.5) dy += Math.sin(w / 0.5 * Math.PI) * 0.45; }
       m.position.y += ((CAP_H * scaleY) / 2 + dy - m.position.y) * Math.min(1, dt * 18);
-      const box = m.children[0] as THREE.Mesh;
-      box.scale.y += (scaleY - box.scale.y) * Math.min(1, dt * 6);
-      box.position.y = 0;
-      const mat = box.material as THREE.MeshStandardMaterial;
-      if (heat) tmp.copy(colors.cap).lerp(h > 0.55 ? colors.hot : colors.acc, Math.min(1, h * 1.4));
-      else tmp.copy(k.k === ' ' ? colors.acc : colors.cap).lerp(k.k === ' ' ? colors.acc2 : colors.acc, pt < 1 ? 1 - pt : 0);
+      m.scale.y += (scaleY - m.scale.y) * Math.min(1, dt * 6);
+      const mat = (m.children[1] as THREE.Mesh).material as THREE.MeshToonMaterial;
+      if (heat) tmp.copy(colors.white).lerp(h > 0.55 ? colors.hot : colors.acc, Math.min(1, h * 1.4));
+      else tmp.copy(colors.white).lerp(colors.acc, pt < 1 ? 1 - pt : 0);
       mat.color.lerp(tmp, Math.min(1, dt * 14));
-      const lg = m.children[1] as THREE.Mesh | undefined;
-      if (lg) lg.position.y = (CAP_H * box.scale.y) / 2 + 0.002;
     });
-    if (wave.current > 0 && now - wave.current > 2200) wave.current = -1;
+    if (wave.current > 0 && now - wave.current > 2600) wave.current = -1;
   });
 
   return (
-    <group ref={group} rotation={[0, 0, 0]}>
+    <group ref={group}>
       {keys.map((k, i) => (
-        <group key={k.k} ref={el => { meshes.current[i] = el; }} position={[k.x, CAP_H / 2, k.z]}
-          onPointerOver={heat ? e => { e.stopPropagation(); onHover(k.k); } : undefined}
+        <group key={k.id} ref={el => { meshes.current[i] = el; }} position={[k.x, CAP_H / 2, k.z]}
+          onPointerOver={heat && k.ch ? e => { e.stopPropagation(); onHover(k.ch); } : undefined}
           onPointerOut={heat ? () => onHover(null) : undefined}>
-          <mesh geometry={geos.get(k.w)} castShadow receiveShadow>
-            <meshStandardMaterial color={k.k === ' ' && !heat ? theme.acc : theme.cap} roughness={0.42} metalness={0.02} />
+          {/* contorno: la misma forma un poco más grande, vista de atrás y en tinta */}
+          <mesh geometry={geos.get(k.w)} scale={[1 + OUTLINE * 2 / k.w, 1 + OUTLINE * 2 / CAP_H, 1 + OUTLINE * 2 / U]}>
+            <meshBasicMaterial color={theme.ink} side={THREE.BackSide} />
           </mesh>
-          {k.k !== ' ' && (
-            <mesh geometry={legendGeo} rotation={[-Math.PI / 2, 0, 0]} position={[0, CAP_H / 2 + 0.002, 0]}>
-              <meshBasicMaterial map={textures.get(k.k)} transparent depthWrite={false} />
+          <mesh geometry={geos.get(k.w)}>
+            <meshToonMaterial color={theme.white} gradientMap={ramp} />
+          </mesh>
+          {k.label && (
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, CAP_H / 2 + 0.003, 0]}>
+              <planeGeometry args={[Math.ceil(k.w / U) * 0.66, 0.66]} />
+              <meshBasicMaterial map={textures.get(k.id)} transparent depthWrite={false} />
             </mesh>
           )}
         </group>
       ))}
-      {/* base del teclado */}
-      <mesh geometry={baseGeo.geo} position={[baseGeo.x, -0.16, baseGeo.z]} receiveShadow>
-        <meshStandardMaterial color={theme.side} roughness={0.6} />
+      {/* base, con su contorno */}
+      <mesh geometry={base.geo} position={[0, -0.18, 0]} scale={[1 + OUTLINE * 2 / base.w, 1 + OUTLINE * 2 / 0.34, 1 + OUTLINE * 2 / base.d]}>
+        <meshBasicMaterial color={theme.ink} side={THREE.BackSide} />
       </mesh>
-      <mesh position={[baseGeo.x, -0.33, baseGeo.z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[30, 20]} />
-        <shadowMaterial opacity={0.14} />
+      <mesh geometry={base.geo} position={[0, -0.18, 0]}>
+        <meshToonMaterial color={theme.white} gradientMap={ramp} />
+      </mesh>
+      {/* sombra plana de dibujo animado, corrida hacia abajo a la derecha */}
+      <mesh position={[0.35, -0.42, 0.45]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[base.w, base.d]} />
+        <meshBasicMaterial color={theme.acc} transparent opacity={0.16} />
       </mesh>
     </group>
   );
@@ -184,17 +223,18 @@ export default function Keyboard3D({ heat, draggable, tooltip, className }: Keyb
   if (!theme) return <div className={className} />;
   return (
     <div className={className} style={{ position: 'relative' }}>
+      {/* flat: sin mapeo de tonos, así el blanco queda blanco (estilo dibujo, no fotográfico) */}
       <Canvas
-        shadows
+        flat
         dpr={[1, 2]}
-        camera={{ position: heat ? [0, 9, 9] : [0, 7.2, 6.4], fov: heat ? 40 : 30 }}
+        camera={{ position: heat ? [0, 12, 11] : [0, 8.2, 10.4], fov: heat ? 40 : 30 }}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0, 0.4)}
+        onCreated={({ camera }) => camera.lookAt(0, 0, 0.3)}
         aria-hidden="true"
       >
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[4, 10, 6]} intensity={1.9} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-8} shadow-camera-right={8} shadow-camera-top={6} shadow-camera-bottom={-6} />
-        <directionalLight position={[-6, 4, -4]} intensity={0.35} color={theme.acc2} />
+        {/* luz ambiente teñida del acento: las caras en sombra quedan celestes, no grises */}
+        <ambientLight intensity={1.25} color={theme.shade} />
+        <directionalLight position={[2.5, 10, 3]} intensity={3.1} />
         <Keys theme={theme} heat={heat} draggable={draggable} onHover={setHover} />
       </Canvas>
       {tooltip && hover && <div className="kb3d-tip">{tooltip(hover)}</div>}

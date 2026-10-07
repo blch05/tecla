@@ -409,7 +409,7 @@ header.top .pill:focus-visible{outline:2px solid var(--accent);outline-offset:1p
 .hero-typer-hint.on{opacity:1;transform:none}
 .hero-typer-hint b{color:var(--accent);font-size:15px}
 .hero-typer-hint a{color:var(--accent)}
-.hero-kb{width:min(760px,100%);height:clamp(150px,26vh,260px);margin:-4px auto 0}
+.hero-kb{width:min(820px,100%);height:clamp(170px,30vh,300px);margin:-4px auto 0}
 .hero-kb canvas{display:block}
 @media (prefers-reduced-motion:reduce){ .ht-caret{animation:none} }
 .kb3d-tip{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--sub);pointer-events:none;white-space:nowrap}
